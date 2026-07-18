@@ -479,22 +479,54 @@ function createDust(){
 }
 
 function createPetals(){
-  const count = 40; // Reducido de 90 para mejor rendimiento
+  const count = 60; // Estrellas
   const positions = new Float32Array(count*3);
   for(let i=0;i<count;i++){
-    positions[i*3+0] = (Math.random()-0.5) * 35;
-    positions[i*3+1] = Math.random()*6;
-    positions[i*3+2] = (Math.random()-0.5) * 35;
+    positions[i*3+0] = (Math.random()-0.5) * 80;
+    positions[i*3+1] = 8 + Math.random()*15;
+    positions[i*3+2] = (Math.random()-0.5) * 80;
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(positions,3));
   const mat = new THREE.PointsMaterial({
-    size:0.2, color:COLORS.tulipPink, map:dotTexture(), transparent:true,
-    depthWrite:false, opacity:0.7
+    size: 0.5, color: 0xfff8e8, map: starTexture(), transparent: true,
+    depthWrite: false, opacity: 0.9, sizeAttenuation: true
   });
   const pts = new THREE.Points(geo, mat);
-  pts.userData.speeds = new Float32Array(count).map(()=> 0.2 + Math.random()*0.3);
+  pts.userData.speeds = new Float32Array(count).map(() => 0.02 + Math.random()*0.03);
+  pts.userData.phases = new Float32Array(count).map(() => Math.random()*Math.PI*2);
   return pts;
+}
+
+function starTexture(){
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const ctx = c.getContext('2d');
+  // Dibuja estrella de 5 puntas
+  ctx.fillStyle = 'white';
+  ctx.translate(64, 64);
+  for(let i=0;i<5;i++){
+    ctx.rotate(Math.PI*2/5);
+    ctx.beginPath();
+    ctx.moveTo(0, -40);
+    ctx.lineTo(9, -12);
+    ctx.lineTo(38, -12);
+    ctx.lineTo(14, 6);
+    ctx.lineTo(22, 38);
+    ctx.lineTo(0, 18);
+    ctx.lineTo(-22, 38);
+    ctx.lineTo(-14, 6);
+    ctx.lineTo(-38, -12);
+    ctx.lineTo(-9, -12);
+    ctx.closePath();
+    ctx.fill();
+  }
+  // Brillo central
+  const grad = ctx.createRadialGradient(0,0,0, 0,0,50);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath(); ctx.arc(0,0,50,0,Math.PI*2); ctx.fill();
+  return new THREE.CanvasTexture(c);
 }
 
 function dotTexture(){
@@ -679,14 +711,13 @@ function updateFlowers(){
 }
 
 function updatePetals(dt){
-  const pos = petalPoints.geometry.attributes.position;
-  const speeds = petalPoints.userData.speeds;
-  for(let i=0;i<pos.count;i++){
-    let y = pos.getY(i) - speeds[i]*dt;
-    if(y < 0) y = 6.5 + Math.random()*1;
-    pos.setY(i, y);
+  // Twinkle stars - no falling, just opacity pulse
+  const material = petalPoints.material;
+  if(material && material.opacity !== undefined){
+    material.opacity = 0.6 + Math.sin(walkTime * 0.8) * 0.3;
   }
-  pos.needsUpdate = true;
+  // Slow rotation of whole starfield
+  petalPoints.rotation.y += dt * 0.005;
   petalPoints.position.x = camera.position.x;
   petalPoints.position.z = camera.position.z;
 }
