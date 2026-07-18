@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin - Nuestro Jardín</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Jost:wght@300;400;500&family=Parisienne&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --vino:#5C1A2B; --vino-dark:#3A1220; --beige:#EDE3D3; --rosa-vieja:#C99DA3;
+    --rosa-suave:#E7CFCF; --cream:#F7F0E6; --gold:#B08D57; --leaf:#7C9A6C;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Jost',sans-serif;background:var(--cream);color:var(--vino-dark);min-height:100vh;padding:20px}
+  .container{max-width:900px;margin:0 auto}
+  h1{font-family:'Parisienne',cursive;font-size:2.5rem;color:var(--vino);text-align:center;margin-bottom:10px}
+  .subtitle{text-align:center;color:var(--rosa-vieja);margin-bottom:30px;font-style:italic}
+  .card{background:white;border-radius:8px;padding:24px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,0.08)}
+  .card h2{font-family:'Cormorant Garamond',serif;color:var(--vino);margin-bottom:16px;font-size:1.4rem;border-bottom:1px solid var(--rosa-suave);padding-bottom:8px}
+  .field{margin-bottom:16px}
+  label{display:block;margin-bottom:6px;font-weight:500;color:var(--vino-dark)}
+  input,textarea{width:100%;padding:10px 12px;border:1px solid var(--rosa-suave);border-radius:6px;font-family:'Cormorant Garamond',serif;font-size:1rem;background:#fefdfb;transition:border 0.2s}
+  input:focus,textarea:focus{outline:none;border-color:var(--gold)}
+  textarea{min-height:80px;resize:vertical}
+  .photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+  .photo-card{border:1px solid var(--rosa-suave);border-radius:8px;padding:16px;background:#fefdfb}
+  .photo-card h3{font-family:'Parisienne',cursive;color:var(--vino);margin-bottom:12px;font-size:1.3rem}
+  .btn{font-family:'Jost',sans-serif;letter-spacing:.1em;text-transform:uppercase;font-size:0.85rem;padding:12px 24px;border:none;border-radius:4px;cursor:pointer;transition:all 0.2s}
+  .btn-primary{background:var(--vino);color:var(--cream)}
+  .btn-primary:hover{background:var(--vino-dark)}
+  .btn-secondary{background:var(--rosa-vieja);color:var(--vino-dark)}
+  .btn-secondary:hover{background:var(--rosa-suave)}
+  .btn-danger{background:#c0392b;color:white}
+  .btn-row{display:flex;gap:12px;flex-wrap:wrap;margin-top:16px}
+  .msg{padding:12px;border-radius:6px;margin-bottom:16px;font-family:'Cormorant Garamond',serif;font-style:italic}
+  .msg.success{background:#d4edda;color:#155724;border:1px solid #c3e6cb}
+  .msg.error{background:#f8d7da;color:#721c24;border:1px solid #f5c6cb}
+  .preview-link{display:inline-block;margin-top:20px;padding:14px 28px;background:var(--gold);color:var(--vino-dark);text-decoration:none;font-weight:500;border-radius:4px;font-family:'Parisienne',cursive;font-size:1.4rem;text-align:center}
+  .preview-link:hover{background:#c4a06a}
+  .image-preview{width:100%;max-height:150px;object-fit:cover;border-radius:4px;margin-top:8px;border:1px solid var(--rosa-suave)}
+  .url-hint{font-size:0.8rem;color:var(--rosa-vieja);margin-top:4px;font-style:italic}
+  .message-lines{display:flex;flex-direction:column;gap:8px}
+  .message-line{display:flex;gap:8px}
+  .message-line input{flex:1}
+  .add-line{background:none;border:1px dashed var(--rosa-vieja);color:var(--rosa-vieja);padding:8px;border-radius:4px;cursor:pointer;font-family:'Jost',sans-serif;font-size:0.85rem}
+  .add-line:hover{background:var(--rosa-suave)}
+  .remove-line{background:none;border:none;color:#c0392b;cursor:pointer;padding:0 8px}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Nuestro Jardín</h1>
+  <p class="subtitle">Panel de edición de contenido</p>
+
+  <div id="msg"></div>
+
+  <!-- Mensaje inicial -->
+  <div class="card">
+    <h2>💌 Mensaje inicial (efecto máquina de escribir)</h2>
+    <div class="message-lines" id="messageLines"></div>
+    <button type="button" class="add-line" onclick="addMessageLine()">+ Añadir línea</button>
+  </div>
+
+  <!-- Fotos -->
+  <div class="card">
+    <h2>📸 Fotos (8 recuerdos)</h2>
+    <div class="photo-grid" id="photoGrid"></div>
+  </div>
+
+  <!-- Carta final -->
+  <div class="card">
+    <h2>💌 Carta final</h2>
+    <div class="field">
+      <label>Saludo</label>
+      <input type="text" id="letterGreeting" placeholder="Querida Elize,">
+    </div>
+    <div class="field">
+      <label>Párrafos de la carta</label>
+      <div class="message-lines" id="letterLines"></div>
+      <button type="button" class="add-line" onclick="addLetterLine()">+ Añadir párrafo</button>
+    </div>
+    <div class="field">
+      <label>Firma</label>
+      <input type="text" id="letterSignature" placeholder="Con todo mi amor">
+    </div>
+  </div>
+
+  <!-- Nombres -->
+  <div class="card">
+    <h2>👫 Nombres</h2>
+    <div class="field">
+      <label>Nombre de ella (aparece en intro y carta)</label>
+      <input type="text" id="herName" placeholder="Elize">
+    </div>
+    <div class="field">
+      <label>Tu nombre/firma</label>
+      <input type="text" id="myName" placeholder="Tu nombre">
+    </div>
+  </div>
+
+<!-- Música & Spotify -->
+  <div class="card">
+    <h2>🎵 Música & Spotify</h2>
+    <p style="font-size:0.85rem; color:var(--rosa-vieja); margin-bottom:12px; font-style:italic;">Configura los enlaces a vuestras canciones especiales. Mantén pulsado el botón 🎵 en el jardín para verlos.</p>
+    <div class="message-lines" id="spotifyLinks"></div>
+    <button type="button" class="add-line" onclick="addSpotifyLink()">+ Añadir canción</button>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-primary" onclick="saveAll()">💾 Guardar todo</button>
+    <button class="btn btn-secondary" onclick="loadDefaults()">↩️ Restaurar defecto</button>
+    <button class="btn btn-danger" onclick="clearAll()">🗑️ Limpiar todo</button>
+  </div>
+
+  <a href="index.html" class="preview-link" target="_blank">🌿 Ver jardín en vivo</a>
+</div>
+
+<script>
+// Configuración por defecto
+const DEFAULTS = {
+  herName: "Elize",
+  myName: "",
+  mensaje: [
+    "Hoy quiero detener el tiempo un momento…",
+    "solo para recordarte cuánto significas para mí.",
+    "Este jardín guarda algunos de nuestros recuerdos.",
+    "Camina, explóralos… y al final, encontrarás algo más. 💕"
+  ],
+  photos: [
+    { label:"Foto 1", caption:"Nuestro primer recuerdo", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:-9, z:-12, image:"" },
+    { label:"Foto 2", caption:"Ese día tan especial", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:11, z:-24, image:"" },
+    { label:"Foto 3", caption:"Mi lugar favorito: contigo", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:-13, z:-38, image:"" },
+    { label:"Foto 4", caption:"Nuestra aventura favorita", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:7, z:-50, image:"" },
+    { label:"Foto 5", caption:"Aquella tarde de risas", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:-5, z:-62, image:"" },
+    { label:"Foto 6", caption:"Tu sonrisa al despertar", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:14, z:-74, image:"" },
+    { label:"Foto 7", caption:"El atardecer que compartimos", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:-11, z:-86, image:"" },
+    { label:"Foto 8", caption:"Nuestro último viaje juntos", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:3, z:-98, image:"" }
+  ],
+  letter: {
+    greeting: "Querida Elize,",
+    paragraphs: [
+      "Escribe aquí tu carta completa: lo que sientes, lo que ha significado este tiempo juntos, y lo que deseas para ella en este nuevo año de vida.",
+      "Gracias por cada risa, cada abrazo y cada momento compartido. Hoy y siempre, celebro quién eres."
+    ],
+    signature: "Con todo mi amor"
+  },
+  music: {
+    links: [
+      { name: "Nuestra canción", url: "https://open.spotify.com/track/TU_TRACK_ID_1" },
+      { name: "Esa que nos gusta", url: "https://open.spotify.com/track/TU_TRACK_ID_2" },
+      { name: "El atardecer", url: "https://open.spotify.com/track/TU_TRACK_ID_3" },
+      { name: "Nuestra playlist", url: "https://open.spotify.com/playlist/TU_PLAYLIST_ID" }
+    ]
+  }
+};
+
+// Utilidades
+function showMsg(text, type='success'){
+  const el = document.getElementById('msg');
+  el.innerHTML = `<div class="msg ${type}">${text}</div>`;
+  setTimeout(()=>el.innerHTML='', 3000);
+}
+
+function getData(){
+  try{
+    const stored = localStorage.getItem('jardin_content');
+    return stored ? JSON.parse(stored) : DEFAULTS;
+  }catch{ return DEFAULTS; }
+}
+
+function setData(data){
+  localStorage.setItem('jardin_content', JSON.stringify(data));
+}
+
+// Renderizado
+function render(){
+  const data = getData();
+  
+  // Nombres
+  document.getElementById('herName').value = data.herName || '';
+  document.getElementById('myName').value = data.myName || '';
+  
+  // Mensaje inicial
+  renderMessageLines(data.mensaje || DEFAULTS.mensaje);
+  
+  // Fotos
+  renderPhotos(data.photos || DEFAULTS.photos);
+  
+  // Carta
+  document.getElementById('letterGreeting').value = data.letter?.greeting || DEFAULTS.letter.greeting;
+  renderLetterLines(data.letter?.paragraphs || DEFAULTS.letter.paragraphs);
+  document.getElementById('letterSignature').value = data.letter?.signature || DEFAULTS.letter.signature;
+
+  // Música
+  renderMusic(data.music || DEFAULTS.music);
+}
+
+function renderMessageLines(lines){
+  const container = document.getElementById('messageLines');
+  container.innerHTML = '';
+  lines.forEach((line, i)=>{
+    const div = document.createElement('div');
+    div.className = 'message-line';
+    div.innerHTML = `
+      <input type="text" value="${escapeHtml(line)}" data-idx="${i}" onchange="updateMessageLine(${this.value}, ${i})" placeholder="Línea ${i+1}">
+      <button class="remove-line" onclick="removeMessageLine(${i})">✕</button>
+    `;
+    // Fix: use proper event handler
+    const input = div.querySelector('input');
+    input.onchange = (e) => updateMessageLine(e.target.value, i);
+    container.appendChild(div);
+  });
+}
+
+function renderLetterLines(lines){
+  const container = document.getElementById('letterLines');
+  container.innerHTML = '';
+  lines.forEach((line, i)=>{
+    const div = document.createElement('div');
+    div.className = 'message-line';
+    div.innerHTML = `
+      <textarea data-idx="${i}" placeholder="Párrafo ${i+1}">${escapeHtml(line)}</textarea>
+      <button class="remove-line" onclick="removeLetterLine(${i})">✕</button>
+    `;
+    const textarea = div.querySelector('textarea');
+    textarea.onchange = (e) => updateLetterLine(e.target.value, i);
+    container.appendChild(div);
+  });
+}
+
+function renderMusic(links){
+  const fields = ['musicName1','musicUrl1','musicName2','musicUrl2','musicName3','musicUrl3','musicName4','musicUrl4'];
+  links.forEach((link, i) => {
+    const nameEl = document.getElementById(fields[i*2]);
+    const urlEl = document.getElementById(fields[i*2+1]);
+    if (nameEl) nameEl.value = link.name || '';
+    if (urlEl) urlEl.value = link.url || '';
+  });
+}
+
+function renderPhotos(photos){
+  const container = document.getElementById('photoGrid');
+  container.innerHTML = '';
+  photos.forEach((p, i)=>{
+    const card = document.createElement('div');
+    card.className = 'photo-card';
+    card.innerHTML = `
+      <h3>${escapeHtml(p.label)}</h3>
+      <div class="field">
+        <label>Título (caption)</label>
+        <input type="text" value="${escapeHtml(p.caption)}" onchange="updatePhoto(${i}, 'caption', this.value)">
+      </div>
+      <div class="field">
+        <label>Por qué es especial (why)</label>
+        <textarea onchange="updatePhoto(${i}, 'why', this.value)">${escapeHtml(p.why)}</textarea>
+      </div>
+      <div class="field">
+        <label>URL de la imagen (opcional)</label>
+        <input type="text" value="${escapeHtml(p.image || '')}" placeholder="https://.../foto.jpg o /fotos/foto1.jpg" onchange="updatePhoto(${i}, 'image', this.value)">
+        <div class="url-hint">Sube la foto a la carpeta /fotos/ o usa una URL externa</div>
+        ${p.image ? `<img class="image-preview" src="${escapeHtml(p.image)}" alt="Preview">` : ''}
+      </div>
+      <div class="field">
+        <label>Posición X</label>
+        <input type="number" step="0.1" value="${p.x}" onchange="updatePhoto(${i}, 'x', parseFloat(this.value))">
+      </div>
+      <div class="field">
+        <label>Posición Z</label>
+        <input type="number" step="0.1" value="${p.z}" onchange="updatePhoto(${i}, 'z', parseFloat(this.value))">
+      </div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+// Handlers
+function addMessageLine(){
+  const data = getData();
+  data.mensaje.push("");
+  setData(data);
+  render();
+}
+
+function removeMessageLine(idx){
+  const data = getData();
+  data.mensaje.splice(idx, 1);
+  setData(data);
+  render();
+}
+
+function updateMessageLine(val, idx){
+  const data = getData();
+  data.mensaje[idx] = val;
+  setData(data);
+}
+
+function addLetterLine(){
+  const data = getData();
+  data.letter.paragraphs.push("");
+  setData(data);
+  render();
+}
+
+function removeLetterLine(idx){
+  const data = getData();
+  data.letter.paragraphs.splice(idx, 1);
+  setData(data);
+  render();
+}
+
+function updateLetterLine(val, idx){
+  const data = getData();
+  data.letter.paragraphs[idx] = val;
+  setData(data);
+}
+
+function updatePhoto(idx, field, val){
+  const data = getData();
+  data.photos[idx][field] = val;
+  setData(data);
+  if(field === 'image') render(); // re-render para preview
+}
+
+function saveAll(){
+  const data = getData();
+  data.herName = document.getElementById('herName').value;
+  data.myName = document.getElementById('myName').value;
+  data.letter.greeting = document.getElementById('letterGreeting').value;
+  data.letter.signature = document.getElementById('letterSignature').value;
+  
+  // Save music links
+  data.music = { links: [] };
+  document.querySelectorAll('#spotifyLinks .message-line').forEach(line => {
+    const inputs = line.querySelectorAll('input');
+    if (inputs.length >= 2) {
+      const name = inputs[0].value.trim();
+      const url = inputs[1].value.trim();
+      if (name || url) data.music.links.push({ name, url });
+    }
+  });
+  
+  setData(data);
+  showMsg('✅ Guardado correctamente. Abre "Ver jardín en vivo" para ver los cambios.');
+}
+
+function addSpotifyLink(name = '', url = '') {
+  const container = document.getElementById('spotifyLinks');
+  const div = document.createElement('div');
+  div.className = 'message-line';
+  div.innerHTML = `
+    <input type="text" value="${escapeHtml(name)}" placeholder="Nombre de la canción" onchange="renderSpotifyLinks()">
+    <input type="text" value="${escapeHtml(url)}" placeholder="https://open.spotify.com/track/..." onchange="renderSpotifyLinks()">
+    <button class="remove-line" onclick="this.parentElement.remove(); renderSpotifyLinks()">✕</button>
+  `;
+  container.appendChild(div);
+}
+
+function renderSpotifyLinks() {
+  // Just triggers re-render on next save
+}
+
+function renderSpotifyLinksOnLoad() {
+  const data = getData();
+  const links = data.music?.links || [];
+  links.forEach(l => addSpotifyLink(l.name, l.url));
+}
+
+function escapeHtml(text){
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// Init
+render();
+renderSpotifyLinksOnLoad();
+</script>
+</body>
+</html>
