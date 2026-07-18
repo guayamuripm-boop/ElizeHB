@@ -11,14 +11,14 @@ const DEFAULTS = {
     "Camina, explóralos… y al final, encontrarás algo más. 💕"
   ],
   photos: [
-    { label:"Foto 1", caption:"Nuestro primer recuerdo", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:-9,  z:-12, image:"" },
-    { label:"Foto 2", caption:"Ese día tan especial",     why:"Escribe aquí por qué esta foto es importante para ustedes.", x:11,  z:-24, image:"" },
-    { label:"Foto 3", caption:"Mi lugar favorito: contigo", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:-13, z:-38, image:"" },
-    { label:"Foto 4", caption:"Nuestra aventura favorita", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:7,   z:-50, image:"" },
-    { label:"Foto 5", caption:"Aquella tarde de risas", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:-5,  z:-62, image:"" },
-    { label:"Foto 6", caption:"Tu sonrisa al despertar", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:14,  z:-74, image:"" },
-    { label:"Foto 7", caption:"El atardecer que compartimos", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:-11, z:-86, image:"" },
-    { label:"Foto 8", caption:"Nuestro último viaje juntos", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:3,   z:-98, image:"" }
+    { label:"Foto 1", caption:"Nuestro primer recuerdo", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:-5,  z:-8, image:"" },
+    { label:"Foto 2", caption:"Ese día tan especial",     why:"Escribe aquí por qué esta foto es importante para ustedes.", x:6,  z:-15, image:"" },
+    { label:"Foto 3", caption:"Mi lugar favorito: contigo", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:-8, z:-23, image:"" },
+    { label:"Foto 4", caption:"Nuestra aventura favorita", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:4,   z:-31, image:"" },
+    { label:"Foto 5", caption:"Aquella tarde de risas", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:-3,  z:-39, image:"" },
+    { label:"Foto 6", caption:"Tu sonrisa al despertar", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:7,  z:-47, image:"" },
+    { label:"Foto 7", caption:"El atardecer que compartimos", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:-6,  z:-55, image:"" },
+    { label:"Foto 8", caption:"Nuestro último viaje juntos", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:1,   z:-63, image:"" }
   ],
   letter: {
     greeting: "Querida Elize,",
@@ -60,8 +60,8 @@ const CONTENT = loadContent();
 
 const MENSAJE = CONTENT.mensaje;
 const PHOTOS = CONTENT.photos;
-const LETTER_POS = { x: 0, z: -110 - (PHOTOS.length - 4) * 12 }; // ajusta posición de la carta según nº de fotos
-const BOUNDS = 90; // Jardín más grande (área 70x130)
+const LETTER_POS = { x: 0, z: -70 }; // Carta muy cerca
+const BOUNDS = 55; // Jardín más compacto
 const HER_NAME = CONTENT.herName;
 const MY_NAME = CONTENT.myName;
 const LETTER_CONTENT = CONTENT.letter;
@@ -72,11 +72,13 @@ const SPOTIFY_LINKS = CONTENT.music?.links || DEFAULTS.music.links;
 // =====================================================================
 const COLORS = {
   // Cielo y entorno
-  skyDark:0x1a3a2e, skyMid:0x2d5a3f, skyLight:0x7ab87a, skyHorizon:0xc8e8c8,
-  fogColor:0x7ab87a,
+  skyDark:0x2a6ba8, skyMid:0x4a90d9, skyLight:0x7ec0f0, skyHorizon:0xc8e8ff,
+  fogColor:0x7ec0f0,
   ground:0x3a5a2a, path:0x8d7a5a,
   // Tulipanes
-  tulipRed:0xc41e3a, tulipPink:0xe8a8c8, tulipYellow:0xf0d840, tulipWhite:0xf5f0e8,
+  tulipRed:0xc41e3a, tulipPink:0xe8a8c8, tulipYellow:0xf0d840, tulipWhite:0xf5f0e8, tulipOrange:0xe87a2a,
+  // Rosas
+  roseRed:0xb82030, rosePink:0xf0a8c8, roseWhite:0xfaf0f0, rosePeach:0xf5c8a8,
   // Gerberas
   gerberaRed:0xd01c1c, gerberaOrange:0xe87a2a, gerberaPink:0xf08ac8, gerberaYellow:0xf5d83a,
   // Tallos y hojas
@@ -85,7 +87,7 @@ const COLORS = {
   center:0x2d2d1a,
   // Polvo ambiental
   dustColors:[0xe8a8c8, 0xf0d840, 0xc8e8c8, 0xf5f0e8],
-  // Pétalos cayendo
+  // Pétalos/estrellas
   petalFall:0xe8a8c8,
   // Luces
   photoGlow:0xe8a8c8, altarGlow:0xf0d840
@@ -341,35 +343,45 @@ function buildFlowerGeometries(){
 }
 
 function initFlowers(){
-  // Flores simples pero muchas y densas para buen rendimiento
-  const tulipColors = [COLORS.tulipRed, COLORS.tulipPink, COLORS.tulipYellow, COLORS.tulipWhite];
+  // Flores: tulipanes, rosas, gerberas - MUY densas y cerca del inicio
+  const tulipColors = [COLORS.tulipRed, COLORS.tulipPink, COLORS.tulipYellow, COLORS.tulipWhite, COLORS.tulipOrange];
+  const roseColors = [COLORS.roseRed, COLORS.rosePink, COLORS.roseWhite, COLORS.rosePeach];
   const gerberaColors = [COLORS.gerberaRed, COLORS.gerberaOrange, COLORS.gerberaPink, COLORS.gerberaYellow];
   
-  // Área del jardín: más ancho y largo, flores más densas
-  const areaWidth = 70;
-  const areaDepth = 130;
-  const spacing = 2.2; // distancia entre flores = más denso
+  // Área: empieza YA desde el inicio, muy densa
+  const areaWidth = 50;  // más ancho para sentir inmersión
+  const areaDepth = 100; // menos profundo, todo concentrado
+  const spacing = 1.3;   // MUY denso (era 2.2)
   
-  for(let z = -5; z > -areaDepth; z -= spacing){
+  for(let z = 0; z > -areaDepth; z -= spacing){
     for(let x = -areaWidth/2; x < areaWidth/2; x += spacing){
-      // Jitter para que no parezca grid
-      const jitterX = (Math.random()-0.5) * 1.2;
-      const jitterZ = (Math.random()-0.5) * 1.2;
+      const jitterX = (Math.random()-0.5) * 0.9;
+      const jitterZ = (Math.random()-0.5) * 0.9;
       const fx = x + jitterX;
       const fz = z + jitterZ;
       
-      // Dejar camino central libre
-      if(Math.abs(fx) < 1.8) continue;
+      // Camino más estrecho para más flores al lado
+      if(Math.abs(fx) < 1.5) continue;
       
-      // Variar tipos y colores
-      const isTulip = Math.random() < 0.55;
-      const colors = isTulip ? tulipColors : gerberaColors;
+      // 3 tipos: 35% tulipanes, 30% rosas, 35% gerberas
+      const r = Math.random();
+      let isTulip, isRose, colors;
+      if(r < 0.35){
+        isTulip = true; isRose = false;
+        colors = tulipColors;
+      }else if(r < 0.65){
+        isTulip = false; isRose = true;
+        colors = roseColors;
+      }else{
+        isTulip = false; isRose = false;
+        colors = gerberaColors;
+      }
       const color = colors[Math.floor(Math.random()*colors.length)];
-      const scale = 0.65 + Math.random()*0.7;
+      const scale = 0.7 + Math.random()*0.6;
       
-      const f = createSimpleFlower(fx, fz, color, scale, isTulip);
+      const f = createSimpleFlower(fx, fz, color, scale, isTulip, isRose);
       scene.add(f);
-      flowerObjs.push(f); // Guardar para animación
+      flowerObjs.push(f);
     }
   }
 }
@@ -388,7 +400,7 @@ function createFlowerSprite(){
   return new THREE.CanvasTexture(canvas);
 }
 
-function createSimpleFlower(x, z, colorHex, scale, isTulip){
+function createSimpleFlower(x, z, colorHex, scale, isTulip, isRose){
   const group = new THREE.Group();
   
   // Tallo simple
@@ -400,7 +412,7 @@ function createSimpleFlower(x, z, colorHex, scale, isTulip){
   group.add(stem);
   
   if(isTulip){
-    // Tulipán simple: 3 pétalos
+    // Tulipán: 3 pétalos curvados (copa)
     const petalGeo = new THREE.SphereGeometry(0.13, 5, 5);
     petalGeo.scale(1, 0.3, 0.65);
     const petalMat = new THREE.MeshStandardMaterial({ color:colorHex, emissive:colorHex, emissiveIntensity:0.08, roughness:0.4 });
@@ -416,17 +428,69 @@ function createSimpleFlower(x, z, colorHex, scale, isTulip){
     const center = new THREE.Mesh(new THREE.SphereGeometry(0.05, 5, 5), new THREE.MeshStandardMaterial({ color:COLORS.center }));
     center.position.y = 0.9;
     group.add(center);
+  }else if(isRose){
+    // Rosa: pétalos en espiral (capullo abierto)
+    const petalGeo = new THREE.SphereGeometry(0.1, 5, 5);
+    petalGeo.scale(1, 0.18, 0.7);
+    const petalMat = new THREE.MeshStandardMaterial({ color:colorHex, emissive:colorHex, emissiveIntensity:0.12, roughness:0.35, metalness:0.05 });
+    
+    // Capa exterior (5 pétalos)
+    for(let i=0;i<5;i++){
+      const ang = (i/5)*Math.PI*2;
+      const petal = new THREE.Mesh(petalGeo, petalMat);
+      petal.position.set(Math.cos(ang)*0.16, 0.85, Math.sin(ang)*0.16);
+      petal.rotation.y = ang;
+      petal.rotation.x = -0.15;
+      petal.rotation.z = 0.1;
+      group.add(petal);
+    }
+    // Capa media (4 pétalos)
+    for(let i=0;i<4;i++){
+      const ang = (i/4)*Math.PI*2 + Math.PI/4;
+      const petal = new THREE.Mesh(petalGeo, petalMat);
+      petal.position.set(Math.cos(ang)*0.11, 0.9, Math.sin(ang)*0.11);
+      petal.rotation.y = ang;
+      petal.rotation.x = -0.25;
+      petal.rotation.z = 0.08;
+      petal.scale.setScalar(0.85);
+      group.add(petal);
+    }
+    // Capa interior (3 pétalos - capullo)
+    for(let i=0;i<3;i++){
+      const ang = (i/3)*Math.PI*2;
+      const petal = new THREE.Mesh(petalGeo, petalMat);
+      petal.position.set(Math.cos(ang)*0.06, 0.95, Math.sin(ang)*0.06);
+      petal.rotation.y = ang;
+      petal.rotation.x = -0.4;
+      petal.scale.setScalar(0.65);
+      group.add(petal);
+    }
+    // Centro
+    const center = new THREE.Mesh(new THREE.SphereGeometry(0.05, 5, 5), new THREE.MeshStandardMaterial({ color:COLORS.center }));
+    center.position.y = 0.96;
+    group.add(center);
   }else{
-    // Gerbera simple: 8 pétalos
+    // Gerbera: 12 pétalos planos en 2 capas
     const petalGeo = new THREE.SphereGeometry(0.09, 4, 4);
     petalGeo.scale(1, 0.12, 0.75);
     const petalMat = new THREE.MeshStandardMaterial({ color:colorHex, emissive:colorHex, emissiveIntensity:0.1, roughness:0.5 });
-    for(let i=0;i<8;i++){
-      const ang = (i/8)*Math.PI*2;
+    // Capa exterior
+    for(let i=0;i<12;i++){
+      const ang = (i/12)*Math.PI*2;
       const petal = new THREE.Mesh(petalGeo, petalMat);
       petal.position.set(Math.cos(ang)*0.18, 0.86, Math.sin(ang)*0.18);
       petal.rotation.y = ang;
-      petal.rotation.x = -0.1;
+      petal.rotation.x = -0.08;
+      group.add(petal);
+    }
+    // Capa interior
+    for(let i=0;i<8;i++){
+      const ang = (i/8)*Math.PI*2 + Math.PI/8;
+      const petal = new THREE.Mesh(petalGeo, petalMat);
+      petal.position.set(Math.cos(ang)*0.12, 0.89, Math.sin(ang)*0.12);
+      petal.rotation.y = ang;
+      petal.rotation.x = -0.04;
+      petal.scale.setScalar(0.8);
       group.add(petal);
     }
     // Centro
@@ -435,14 +499,15 @@ function createSimpleFlower(x, z, colorHex, scale, isTulip){
     group.add(center);
   }
   
-  // 2 hojas
-  for(let i=0;i<2;i++){
+  // 2-3 hojas
+  const leafCount = isRose ? 3 : 2;
+  for(let i=0;i<leafCount;i++){
     const leaf = new THREE.Mesh(
       new THREE.SphereGeometry(0.15, 4, 4),
       new THREE.MeshStandardMaterial({ color:COLORS.leaf, roughness:0.9 })
     );
     leaf.scale.set(1, 0.15, 0.5);
-    const lang = (i/2)*Math.PI*2;
+    const lang = (i/leafCount)*Math.PI*2;
     leaf.position.set(Math.cos(lang)*0.12, 0.2, Math.sin(lang)*0.12);
     leaf.rotation.z = 0.5;
     leaf.rotation.y = lang;
@@ -692,7 +757,7 @@ function updateMovement(dt){
     const mx = (fx * -moveVec.y + rx * moveVec.x) * speed * dt;
     const mz = (fz * -moveVec.y + rz * moveVec.x) * speed * dt;
     camera.position.x = clamp(camera.position.x + mx, -BOUNDS, BOUNDS);
-    camera.position.z = clamp(camera.position.z + mz, -BOUNDS-20, BOUNDS-80);
+    camera.position.z = clamp(camera.position.z + mz, -BOUNDS-5, BOUNDS-100);
     camera.position.y = 1.6 + Math.sin(walkTime*7.5) * 0.035;
   } else {
     walking = false;
