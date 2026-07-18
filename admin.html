@@ -46,6 +46,16 @@
   .add-line{background:none;border:1px dashed var(--rosa-vieja);color:var(--rosa-vieja);padding:8px;border-radius:4px;cursor:pointer;font-family:'Jost',sans-serif;font-size:0.85rem}
   .add-line:hover{background:var(--rosa-suave)}
   .remove-line{background:none;border:none;color:#c0392b;cursor:pointer;padding:0 8px}
+  
+  /* Image upload */
+  .image-upload{position:relative;border:2px dashed var(--rosa-vieja);border-radius:8px;padding:20px;text-align:center;transition:all 0.2s;cursor:pointer;background:#fefdfb}
+  .image-upload.drag-over{border-color:var(--gold);background:#fff8f0}
+  .image-upload input[type="file"]{display:none}
+  .upload-content{display:flex;flex-direction:column;align-items:center;gap:8px}
+  .upload-icon{font-size:2rem}
+  .upload-text{font-family:'Cormorant Garamond',serif;color:var(--vino-dark);font-size:1.1rem}
+  .upload-hint{font-size:0.75rem;color:var(--rosa-vieja)}
+  .image-upload .image-preview{margin-top:12px;max-height:120px}
 </style>
 </head>
 <body>
@@ -256,10 +266,17 @@ function renderPhotos(photos){
         <textarea onchange="updatePhoto(${i}, 'why', this.value)">${escapeHtml(p.why)}</textarea>
       </div>
       <div class="field">
-        <label>URL de la imagen (opcional)</label>
-        <input type="text" value="${escapeHtml(p.image || '')}" placeholder="https://.../foto.jpg o /fotos/foto1.jpg" onchange="updatePhoto(${i}, 'image', this.value)">
-        <div class="url-hint">Sube la foto a la carpeta /fotos/ o usa una URL externa</div>
-        ${p.image ? `<img class="image-preview" src="${escapeHtml(p.image)}" alt="Preview">` : ''}
+        <label>Imagen</label>
+        <div class="image-upload" id="upload-${i}" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropImage(event, ${i})">
+          <input type="file" id="file-${i}" accept="image/*" onchange="fileSelected(event, ${i})" style="display:none">
+          <div class="upload-content">
+            <span class="upload-icon">📷</span>
+            <span class="upload-text">Arrastra una foto aquí o haz clic</span>
+            <span class="upload-hint">JPG/PNG máx 2MB → se guarda como base64</span>
+          </div>
+          ${p.image ? `<img class="image-preview" src="${escapeHtml(p.image)}" alt="Preview">` : ''}
+        </div>
+        <div class="url-hint">O usa URL: <input type="text" value="${escapeHtml(p.image || '')}" placeholder="https://.../foto.jpg" onchange="updatePhoto(${i}, 'image', this.value)" style="width:100%;margin-top:8px;padding:8px;border:1px solid var(--rosa-suave);border-radius:4px;"></div>
       </div>
       <div class="field">
         <label>Posición X</label>
@@ -272,6 +289,33 @@ function renderPhotos(photos){
     `;
     container.appendChild(card);
   });
+}
+
+// Image upload handlers
+function dragOver(e){ e.preventDefault(); e.currentTarget.classList.add('drag-over'); }
+function dragLeave(e){ e.currentTarget.classList.remove('drag-over'); }
+function dropImage(e, idx){
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if(file) processImage(file, idx);
+}
+function fileSelected(e, idx){
+  const file = e.target.files[0];
+  if(file) processImage(file, idx);
+}
+function processImage(file, idx){
+  if(!file.type.startsWith('image/')) return showMsg('Solo imágenes', 'error');
+  if(file.size > 2*1024*1024) return showMsg('Máx 2MB', 'error');
+  const reader = new FileReader();
+  reader.onload = e => {
+    const data = getData();
+    data.photos[idx].image = e.target.result; // base64
+    setData(data);
+    render();
+    showMsg('✅ Imagen guardada');
+  };
+  reader.readAsDataURL(file);
 }
 
 // Handlers

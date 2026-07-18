@@ -61,7 +61,7 @@ const CONTENT = loadContent();
 const MENSAJE = CONTENT.mensaje;
 const PHOTOS = CONTENT.photos;
 const LETTER_POS = { x: 0, z: -110 - (PHOTOS.length - 4) * 12 }; // ajusta posición de la carta según nº de fotos
-const BOUNDS = 70 + (PHOTOS.length - 4) * 10;
+const BOUNDS = 90; // Jardín más grande (área 70x130)
 const HER_NAME = CONTENT.herName;
 const MY_NAME = CONTENT.myName;
 const LETTER_CONTENT = CONTENT.letter;
@@ -95,12 +95,21 @@ const COLORS = {
 // ESCENA THREE.JS
 // =====================================================================
 let scene, camera, renderer, clock;
-let flowerObjs = [], dustPoints, petalPoints;
+let flowerMesh = null; // InstancedMesh para flores
+let dustPoints, petalPoints;
 let yaw = 0, pitch = 0;
 let moveVec = { x:0, y:0 };
 let walking = false, walkTime = 0;
 let nearestPOI = null;
 let visited = new Set();
+
+// Instanced flower data
+const MAX_FLOWERS = 180; // Más flores, pero instanciadas (rápido)
+const flowerMatrices = [];
+const flowerTypes = []; // 0 = tulip, 1 = gerbera
+const flowerColors = [];
+const flowerScales = [];
+const flowerSeeds = [];
 
 // DOM elements (needed before animate starts)
 const promptEl = document.getElementById('prompt');
@@ -186,25 +195,8 @@ function init3D(){
   path.position.set(0, 0.01, -35);
   scene.add(path);
 
-  // ---- campo de flores (objetos reales cerca del camino) ----
-  // Tulipanes y Gerberas principalmente
-  const tulipColors = [COLORS.tulipRed, COLORS.tulipPink, COLORS.tulipYellow, COLORS.tulipWhite];
-  const gerberaColors = [COLORS.gerberaRed, COLORS.gerberaOrange, COLORS.gerberaPink, COLORS.gerberaYellow];
-  
-  // Menos flores para mejor rendimiento (35 en vez de 70)
-  for(let i=0;i<35;i++){
-    const x = (Math.random()-0.5) * 46;
-    const z = -Math.random() * 72 + 4;
-    if(Math.abs(x) < 1.4) continue;
-    const isTulip = Math.random() < 0.6; // 60% tulipanes, 40% gerberas
-    const c = isTulip 
-      ? tulipColors[Math.floor(Math.random()*tulipColors.length)]
-      : gerberaColors[Math.floor(Math.random()*gerberaColors.length)];
-    const scale = 0.8 + Math.random()*0.7;
-    const f = createFlower(x, z, c, scale, isTulip);
-    scene.add(f);
-    flowerObjs.push(f);
-  }
+  // ---- campo de flores (InstancedMesh para rendimiento) ----
+  initFlowers();
 
   // ---- polvo de flores de fondo (volumen/profundidad) ----
   dustPoints = createDust();
@@ -238,113 +230,228 @@ function onResize(){
 }
 
 // =====================================================================
-// GEOMETRÍA: flores, polvo, pétalos, marcos de foto, altar
+// GEOMETRÍA: InstancedMesh flores, polvo, pétalos, marcos de foto, altar
 // =====================================================================
-function createFlower(x, z, colorHex, scale, isTulip){
-  const group = new THREE.Group();
+
+// Pre-built geometries for instanced flowers
+let tulipGeometry = null;
+let gerberaGeometry = null;
+let stemGeometry = null;
+let leafGeometry = null;
+let centerGeometry = null;
+
+function buildFlowerGeometries(){
+  // Geometrías base compartidas
+  stemGeometry = new THREE.CylinderGeometry(0.025, 0.04, 0.9, 5);
+  leafGeometry = new THREE.SphereGeometry(0.18, 5, 5);
+  leafGeometry.scale(1, 0.18, 0.6);
+  centerGeometry = new THREE.SphereGeometry(0.1, 6, 6);
+
+  // Tulipán: tallo + 6 pétalos + centro + 2 hojas = 10 instancias base
+  const tulipParts = [];
   
   // Tallo
+  tulipParts.push({ geo: stemGeometry, pos: new THREE.Vector3(0, 0.45, 0), rot: new THREE.Euler() });
+  
+  // Pétalos externos (3)
+  const petalGeo = new THREE.SphereGeometry(0.14, 6, 6);
+  petalGeo.scale(1, 0.35, 0.7);
+  for(let i=0;i<3;i++){
+    const ang = (i/3) * Math.PI*2;
+    tulipParts.push({ 
+      geo: petalGeo, 
+      pos: new THREE.Vector3(Math.cos(ang)*0.1, 0.92, Math.sin(ang)*0.1),
+      rot: new THREE.Euler(-0.3, ang, 0)
+    });
+  }
+  // Pétalos internos (3)
+  const innerGeo = new THREE.SphereGeometry(0.1, 6, 6);
+  innerGeo.scale(1, 0.3, 0.6);
+  for(let i=0;i<3;i++){
+    const ang = (i/3) * Math.PI*2 + Math.PI/3;
+    tulipParts.push({ 
+      geo: innerGeo, 
+      pos: new THREE.Vector3(Math.cos(ang)*0.07, 0.95, Math.sin(ang)*0.07),
+      rot: new THREE.Euler(-0.4, ang, 0),
+      scale: 0.7
+    });
+  }
+  // Centro
+  tulipParts.push({ geo: centerGeometry, pos: new THREE.Vector3(0, 0.95, 0), rot: new THREE.Euler() });
+  // Hojas (2)
+  for(let i=0;i<2;i++){
+    const lang = (i/2) * Math.PI*2;
+    tulipParts.push({ 
+      geo: leafGeometry, 
+      pos: new THREE.Vector3(Math.cos(lang)*0.15, 0.25, Math.sin(lang)*0.15),
+      rot: new THREE.Euler(0, lang, 0.6 + Math.random()*0.3)
+    });
+  }
+  
+  // Gerbera: tallo + 24 pétalos + centro + 3 hojas = 29 instancias base
+  const gerberaParts = [];
+  gerberaParts.push({ geo: stemGeometry, pos: new THREE.Vector3(0, 0.45, 0), rot: new THREE.Euler() });
+  
+  const gerbPetalGeo = new THREE.SphereGeometry(0.1, 5, 5);
+  gerbPetalGeo.scale(1, 0.15, 0.8);
+  // Capa externa (14)
+  for(let i=0;i<14;i++){
+    const ang = (i/14) * Math.PI*2;
+    const radius = 0.22 + Math.sin(i*0.5)*0.03;
+    gerberaParts.push({ 
+      geo: gerbPetalGeo, 
+      pos: new THREE.Vector3(Math.cos(ang)*radius, 0.9, Math.sin(ang)*radius),
+      rot: new THREE.Euler(-0.1, ang, 0)
+    });
+  }
+  // Capa interna (10)
+  for(let i=0;i<10;i++){
+    const ang = (i/10) * Math.PI*2 + Math.PI/10;
+    gerberaParts.push({ 
+      geo: gerbPetalGeo, 
+      pos: new THREE.Vector3(Math.cos(ang)*0.14, 0.92, Math.sin(ang)*0.14),
+      rot: new THREE.Euler(-0.05, ang, 0),
+      scale: 0.85
+    });
+  }
+  // Centro
+  gerberaParts.push({ geo: centerGeometry, pos: new THREE.Vector3(0, 0.92, 0), rot: new THREE.Euler(), scale: 1.2 });
+  // Hojas (3)
+  for(let i=0;i<3;i++){
+    const lang = (i/3) * Math.PI*2;
+    gerberaParts.push({ 
+      geo: leafGeometry, 
+      pos: new THREE.Vector3(Math.cos(lang)*0.15, 0.25, Math.sin(lang)*0.15),
+      rot: new THREE.Euler(0, lang, 0.6 + Math.random()*0.3)
+    });
+  }
+
+  // Crear geometrías combinadas para InstancedMesh
+  tulipGeometry = new THREE.InstancedBufferGeometry();
+  gerberaGeometry = new THREE.InstancedBufferGeometry();
+  
+  // Para simplicidad, usamos un enfoque diferente: una geometría base simple y matrices de transformación
+  // Creamos una geometría base simple (un triángulo/plano) y usamos matrices para posicionar cada parte
+  const baseGeo = new THREE.BufferGeometry();
+  baseGeo.setAttribute('position', new THREE.Float32BufferAttribute([-0.5,0,0, 0.5,0,0, 0,1,0], 3));
+  baseGeo.setAttribute('uv', new THREE.Float32BufferAttribute([0,1, 1,1, 0.5,0], 2));
+  
+  tulipGeometry = baseGeo;
+  gerberaGeometry = baseGeo.clone();
+}
+
+function initFlowers(){
+  // Flores simples pero muchas y densas para buen rendimiento
+  const tulipColors = [COLORS.tulipRed, COLORS.tulipPink, COLORS.tulipYellow, COLORS.tulipWhite];
+  const gerberaColors = [COLORS.gerberaRed, COLORS.gerberaOrange, COLORS.gerberaPink, COLORS.gerberaYellow];
+  
+  // Área del jardín: más ancho y largo, flores más densas
+  const areaWidth = 70;
+  const areaDepth = 130;
+  const spacing = 2.2; // distancia entre flores = más denso
+  
+  for(let z = -5; z > -areaDepth; z -= spacing){
+    for(let x = -areaWidth/2; x < areaWidth/2; x += spacing){
+      // Jitter para que no parezca grid
+      const jitterX = (Math.random()-0.5) * 1.2;
+      const jitterZ = (Math.random()-0.5) * 1.2;
+      const fx = x + jitterX;
+      const fz = z + jitterZ;
+      
+      // Dejar camino central libre
+      if(Math.abs(fx) < 1.8) continue;
+      
+      // Variar tipos y colores
+      const isTulip = Math.random() < 0.55;
+      const colors = isTulip ? tulipColors : gerberaColors;
+      const color = colors[Math.floor(Math.random()*colors.length)];
+      const scale = 0.65 + Math.random()*0.7;
+      
+      const f = createSimpleFlower(fx, fz, color, scale, isTulip);
+      scene.add(f);
+      flowerObjs.push(f); // Guardar para animación
+    }
+  }
+}
+
+function createFlowerSprite(){
+  // Sprite simple de flor para Points
+  const canvas = document.createElement('canvas');
+  canvas.width = 64; canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  const grad = ctx.createRadialGradient(32,32,0, 32,32,32);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.5, 'rgba(255,255,255,0.5)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,64,64);
+  return new THREE.CanvasTexture(canvas);
+}
+
+function createSimpleFlower(x, z, colorHex, scale, isTulip){
+  const group = new THREE.Group();
+  
+  // Tallo simple
   const stem = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.025, 0.04, 0.9, 5),
+    new THREE.CylinderGeometry(0.02, 0.035, 0.8, 4),
     new THREE.MeshStandardMaterial({ color:COLORS.stem, roughness:0.9 })
   );
-  stem.position.y = 0.45;
+  stem.position.y = 0.4;
   group.add(stem);
-
+  
   if(isTulip){
-    // TULIPÁN - 3 pétalos curvados hacia arriba (forma de copa)
-    const petalGeo = new THREE.SphereGeometry(0.14, 6, 6);
-    petalGeo.scale(1, 0.35, 0.7);
-    const petalMat = new THREE.MeshStandardMaterial({ 
-      color:colorHex, 
-      emissive:colorHex, 
-      emissiveIntensity:0.08, 
-      roughness:0.4,
-      metalness:0.1
-    });
-    
+    // Tulipán simple: 3 pétalos
+    const petalGeo = new THREE.SphereGeometry(0.13, 5, 5);
+    petalGeo.scale(1, 0.3, 0.65);
+    const petalMat = new THREE.MeshStandardMaterial({ color:colorHex, emissive:colorHex, emissiveIntensity:0.08, roughness:0.4 });
     for(let i=0;i<3;i++){
+      const ang = (i/3)*Math.PI*2;
       const petal = new THREE.Mesh(petalGeo, petalMat);
-      const ang = (i/3) * Math.PI*2;
-      petal.position.set(Math.cos(ang)*0.1, 0.92, Math.sin(ang)*0.1);
+      petal.position.set(Math.cos(ang)*0.1, 0.88, Math.sin(ang)*0.1);
       petal.rotation.y = ang;
-      petal.rotation.x = -0.3; // Curvados hacia arriba
+      petal.rotation.x = -0.35;
       group.add(petal);
     }
-    
-    // 3 pétalos internos más pequeños
-    const innerGeo = new THREE.SphereGeometry(0.1, 6, 6);
-    innerGeo.scale(1, 0.3, 0.6);
-    for(let i=0;i<3;i++){
-      const petal = new THREE.Mesh(innerGeo, petalMat);
-      const ang = (i/3) * Math.PI*2 + Math.PI/3;
-      petal.position.set(Math.cos(ang)*0.07, 0.95, Math.sin(ang)*0.07);
-      petal.rotation.y = ang;
-      petal.rotation.x = -0.4;
-      petal.scale.setScalar(0.7);
-      group.add(petal);
-    }
+    // Centro
+    const center = new THREE.Mesh(new THREE.SphereGeometry(0.05, 5, 5), new THREE.MeshStandardMaterial({ color:COLORS.center }));
+    center.position.y = 0.9;
+    group.add(center);
   }else{
-    // GERBERA - muchos pétalos planos en espiral
-    const petalGeo = new THREE.SphereGeometry(0.1, 5, 5);
-    petalGeo.scale(1, 0.15, 0.8);
-    const petalMat = new THREE.MeshStandardMaterial({ 
-      color:colorHex, 
-      emissive:colorHex, 
-      emissiveIntensity:0.1, 
-      roughness:0.5
-    });
-    
-    const petalCount = 14;
-    for(let i=0;i<petalCount;i++){
+    // Gerbera simple: 8 pétalos
+    const petalGeo = new THREE.SphereGeometry(0.09, 4, 4);
+    petalGeo.scale(1, 0.12, 0.75);
+    const petalMat = new THREE.MeshStandardMaterial({ color:colorHex, emissive:colorHex, emissiveIntensity:0.1, roughness:0.5 });
+    for(let i=0;i<8;i++){
+      const ang = (i/8)*Math.PI*2;
       const petal = new THREE.Mesh(petalGeo, petalMat);
-      const ang = (i/petalCount) * Math.PI*2;
-      const radius = 0.22 + Math.sin(i*0.5)*0.03;
-      petal.position.set(Math.cos(ang)*radius, 0.9, Math.sin(ang)*radius);
+      petal.position.set(Math.cos(ang)*0.18, 0.86, Math.sin(ang)*0.18);
       petal.rotation.y = ang;
       petal.rotation.x = -0.1;
       group.add(petal);
     }
-    
-    // Segunda capa de pétalos
-    for(let i=0;i<10;i++){
-      const petal = new THREE.Mesh(petalGeo, petalMat);
-      const ang = (i/10) * Math.PI*2 + Math.PI/10;
-      petal.position.set(Math.cos(ang)*0.14, 0.92, Math.sin(ang)*0.14);
-      petal.rotation.y = ang;
-      petal.rotation.x = -0.05;
-      petal.scale.setScalar(0.85);
-      group.add(petal);
-    }
+    // Centro
+    const center = new THREE.Mesh(new THREE.SphereGeometry(0.1, 5, 5), new THREE.MeshStandardMaterial({ color:COLORS.center }));
+    center.position.y = 0.88;
+    group.add(center);
   }
-
-  // Centro de la flor
-  const center = new THREE.Mesh(
-    new THREE.SphereGeometry(isTulip ? 0.06 : 0.12, 6, 6),
-    new THREE.MeshStandardMaterial({ color:COLORS.center, roughness:0.3, metalness:0.2 })
-  );
-  center.position.y = isTulip ? 0.95 : 0.92;
-  group.add(center);
-
-  // Hojas en la base (2-3)
-  const leafCount = isTulip ? 2 : 3;
-  for(let i=0;i<leafCount;i++){
+  
+  // 2 hojas
+  for(let i=0;i<2;i++){
     const leaf = new THREE.Mesh(
-      new THREE.SphereGeometry(0.18, 5, 5),
+      new THREE.SphereGeometry(0.15, 4, 4),
       new THREE.MeshStandardMaterial({ color:COLORS.leaf, roughness:0.9 })
     );
-    leaf.scale.set(1, 0.18, 0.6);
-    const lang = (i/leafCount) * Math.PI*2;
-    leaf.position.set(Math.cos(lang)*0.15, 0.25, Math.sin(lang)*0.15);
-    leaf.rotation.z = 0.6 + Math.random()*0.3;
+    leaf.scale.set(1, 0.15, 0.5);
+    const lang = (i/2)*Math.PI*2;
+    leaf.position.set(Math.cos(lang)*0.12, 0.2, Math.sin(lang)*0.12);
+    leaf.rotation.z = 0.5;
     leaf.rotation.y = lang;
     group.add(leaf);
   }
-
+  
   group.position.set(x, 0, z);
   group.scale.setScalar(scale);
   group.userData.seed = Math.random()*10;
-  group.userData.isTulip = isTulip;
   return group;
 }
 
@@ -553,7 +660,7 @@ function updateMovement(dt){
     const mx = (fx * -moveVec.y + rx * moveVec.x) * speed * dt;
     const mz = (fz * -moveVec.y + rz * moveVec.x) * speed * dt;
     camera.position.x = clamp(camera.position.x + mx, -BOUNDS, BOUNDS);
-    camera.position.z = clamp(camera.position.z + mz, -BOUNDS-10, BOUNDS-40);
+    camera.position.z = clamp(camera.position.z + mz, -BOUNDS-20, BOUNDS-80);
     camera.position.y = 1.6 + Math.sin(walkTime*7.5) * 0.035;
   } else {
     walking = false;
@@ -563,10 +670,11 @@ function updateMovement(dt){
 
 function clamp(v,min,max){ return Math.max(min, Math.min(max,v)); }
 
+// Simplified flower update - subtle sway for flower groups
 function updateFlowers(){
   const t = walkTime;
   flowerObjs.forEach(f => {
-    f.rotation.z = Math.sin(t*0.8 + f.userData.seed) * 0.04;
+    f.rotation.z = Math.sin(t*0.6 + f.userData.seed) * 0.025;
   });
 }
 
@@ -646,7 +754,15 @@ function interactNearest(){
 function openPhoto(p, idx){
   visited.add(idx);
   document.getElementById('countNum').textContent = visited.size;
-  document.getElementById('photoPh').textContent = p.label;
+  
+  const img = document.getElementById('photoImg');
+  if(p.image && p.image.trim()){
+    img.src = p.image.trim();
+    img.style.display = 'block';
+  }else{
+    img.style.display = 'none';
+  }
+  
   document.getElementById('photoCaption').textContent = p.caption;
   document.getElementById('photoWhy').textContent = p.why;
   document.getElementById('photoOverlay').classList.add('show');
