@@ -40,7 +40,7 @@ const DEFAULTS = {
 
 async function loadFromSupabase() {
   try {
-    const supabase = window.supabase;
+    const supabase = window.supabaseClient;
     
     const { data, error } = await supabase
       .from(TABLE_NAME)

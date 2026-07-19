@@ -150,13 +150,14 @@
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script>
 // ============================================================
-// SUPABASE CONFIG - REEMPLAZA CON TUS CREDENCIALES
+// SUPABASE CONFIG
 // ============================================================
 const SUPABASE_URL = 'https://vkvjjswnpitbroypjzta.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZrdmpqc3du cGl0YnJveXBqenRhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ0MjgxMDcsImV4cCI6MjEwMDAwNDEwN30.Uz7jMK99RgGPOEqCCKKD07Z7dFX9nlhQRRSry8g9-7M';
 const TABLE_NAME = 'jardin_content';
 const ROW_ID = '1';
 
+// Create supabase CLIENT (using the global library, not overwriting it)
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ============================================================
