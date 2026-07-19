@@ -94,6 +94,15 @@ function initApp() {
   window.MY_NAME = CONTENT.myName;
   window.LETTER_CONTENT = CONTENT.letter;
   window.SPOTIFY_LINKS = CONTENT.music?.links || DEFAULTS.music.links;
+  // Canción real subida/enlazada en el admin (prioridad: archivo subido > URL directa).
+  // Se asigna aquí (no al cargar el script) porque CONTENT llega async desde Supabase;
+  // hacerlo antes siempre daba MUSIC_AUDIO_SRC vacío.
+  window.MUSIC_AUDIO_SRC = CONTENT.music?.audioData || CONTENT.music?.audioUrl || '';
+  if(MUSIC_AUDIO_SRC){
+    const bgAudioEl = document.getElementById('bgAudio');
+    bgAudioEl.src = MUSIC_AUDIO_SRC;
+    bgAudioEl.volume = 0.55;
+  }
 
   // Apply text/content to DOM now that data has loaded
   applyDynamicContent();
@@ -172,30 +181,28 @@ function init3D(){
   skyCanvas.width = 512; skyCanvas.height = 256;
   const sctx = skyCanvas.getContext('2d');
   
-  // Degradado cielo — ATARDECER DORADO (romántico, cálido, cinematográfico)
+  // Degradado cielo — DÍA AZUL ALEGRE (luminoso, feliz, sin nada raro/triste)
   const grad = sctx.createLinearGradient(0,0,0,256);
-  grad.addColorStop(0,    '#2b2350');  // cenit: violeta profundo
-  grad.addColorStop(0.32, '#5b3f6e');  // violeta suave
-  grad.addColorStop(0.58, '#a5537a');  // vino / rosa vieja
-  grad.addColorStop(0.80, '#e0906f');  // coral cálido
-  grad.addColorStop(1,    '#f7d9a8');  // horizonte dorado
+  grad.addColorStop(0,    '#3a8fe0');  // cenit: azul vivo
+  grad.addColorStop(0.45, '#69b3ec');  // azul medio
+  grad.addColorStop(0.75, '#a9d8f5');  // azul claro
+  grad.addColorStop(1,    '#e8f6ff');  // horizonte casi blanco, luminoso
   sctx.fillStyle = grad; sctx.fillRect(0,0,512,256);
 
-  // Resplandor del sol cerca del horizonte
-  const sunGlow = sctx.createRadialGradient(256, 232, 6, 256, 232, 150);
-  sunGlow.addColorStop(0, 'rgba(255,244,214,0.95)');
-  sunGlow.addColorStop(0.4, 'rgba(255,214,150,0.45)');
-  sunGlow.addColorStop(1, 'rgba(255,200,140,0)');
-  sctx.fillStyle = sunGlow; sctx.fillRect(0,120,512,136);
+  // Resplandor suave del sol, arriba (día alto, no un atardecer)
+  const sunGlow = sctx.createRadialGradient(390, 55, 4, 390, 55, 130);
+  sunGlow.addColorStop(0, 'rgba(255,255,240,0.95)');
+  sunGlow.addColorStop(0.5, 'rgba(255,250,220,0.35)');
+  sunGlow.addColorStop(1, 'rgba(255,250,220,0)');
+  sctx.fillStyle = sunGlow; sctx.fillRect(0,0,512,180);
 
-  // Nubes cálidas teñidas por el ocaso
-  for(let i=0;i<10;i++){
+  // Nubes blancas esponjosas (más en la parte baja, cerca del horizonte)
+  for(let i=0;i<11;i++){
     const cx = Math.random()*512;
-    const cy = Math.random()*90 + 30;
-    const w = 60 + Math.random()*90;
-    const h = 20 + Math.random()*18;
-    const warm = cy > 110 ? 'rgba(255,214,180,0.55)' : 'rgba(240,220,235,0.35)';
-    sctx.fillStyle = warm;
+    const cy = Math.random()*110 + 100;
+    const w = 65 + Math.random()*95;
+    const h = 22 + Math.random()*18;
+    sctx.fillStyle = 'rgba(255,255,255,0.92)';
     drawCloud(sctx, cx, cy, w, h);
   }
 
@@ -203,8 +210,8 @@ function init3D(){
   skyTex.colorSpace = THREE.SRGBColorSpace;
   scene.background = skyTex;
 
-  // niebla cálida del color del horizonte -> el suelo se funde con el ocaso
-  scene.fog = new THREE.FogExp2(0xe8c49a, 0.021);
+  // niebla azul clara del horizonte -> el suelo se funde con el cielo sin líneas duras
+  scene.fog = new THREE.FogExp2(0xcfe9fb, 0.019);
 
   // ---- cámara ----
   camera = new THREE.PerspectiveCamera(62, window.innerWidth/window.innerHeight, 0.1, 400);
@@ -222,14 +229,14 @@ function init3D(){
   renderer.setSize(window.innerWidth, window.innerHeight);
   document.getElementById('gameContainer').appendChild(renderer.domElement);
 
-  // ---- luces (atardecer cálido) ----
-  scene.add(new THREE.HemisphereLight(0xffe3c0, 0x4a5a38, 0.7)); // cielo cálido / rebote verde del suelo
-  scene.add(new THREE.AmbientLight(0xffe8d5, 0.32));
-  const sun = new THREE.DirectionalLight(0xffce92, 1.2);          // sol dorado bajo, al fondo del camino
-  sun.position.set(-22, 16, -34);
+  // ---- luces (día soleado y alegre) ----
+  scene.add(new THREE.HemisphereLight(0xd8ecff, 0x5a7a42, 0.85)); // cielo azul / rebote verde del suelo
+  scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+  const sun = new THREE.DirectionalLight(0xfffbe8, 1.35);          // sol blanco-cálido bien alto
+  sun.position.set(-18, 45, -10);
   scene.add(sun);
-  // relleno frío tenue desde atrás para dar volumen
-  const rim = new THREE.DirectionalLight(0x9fb0e0, 0.25);
+  // relleno suave desde atrás para dar volumen sin sombras duras
+  const rim = new THREE.DirectionalLight(0xeaf4ff, 0.3);
   rim.position.set(20, 10, 30);
   scene.add(rim);
 
@@ -255,12 +262,11 @@ function init3D(){
   dustPoints = createDust();
   scene.add(dustPoints);
 
-  // ---- estrellas en el cielo ----
-  starPoints = createStars();
-  scene.add(starPoints);
+  // (sin estrellas: es de día, un cielo azul alegre no las necesita)
 
   // ---- puntos de interés: fotos ----
   PHOTOS.forEach((p, idx) => {
+    p.idx = idx; // clave para el contador: sin esto, visited.add(undefined) nunca avanza
     const group = createPhotoFrame(p, idx);
     scene.add(group);
     p.obj = group;
@@ -792,8 +798,11 @@ function updateMovement(dt){
     const rx = Math.cos(yaw), rz = -Math.sin(yaw);
     const mx = (fx * -moveVec.y + rx * moveVec.x) * speed * dt;
     const mz = (fz * -moveVec.y + rz * moveVec.x) * speed * dt;
+    // z va de un poco delante del spawn (9) hasta un poco detrás del altar (LETTER_POS.z - 8).
+    // Antes era clamp(z, -60, -25): como el spawn está en z=6 (> -25), el primer movimiento
+    // "teletransportaba" la cámara a -25 de golpe, saltándose las primeras fotos sin poder volver.
     camera.position.x = clamp(camera.position.x + mx, -BOUNDS, BOUNDS);
-    camera.position.z = clamp(camera.position.z + mz, -BOUNDS-5, BOUNDS-80);
+    camera.position.z = clamp(camera.position.z + mz, LETTER_POS.z - 8, 9);
     camera.position.y = 1.6 + Math.sin(walkTime*7.5) * 0.035;
   } else {
     walking = false;
@@ -1053,14 +1062,30 @@ function typeMessage(){
 document.getElementById('enterBtn').addEventListener('click', ()=>{
   document.getElementById('intro').classList.add('hide');
   document.getElementById('hud').classList.add('show');
+  // Al entrar (gesto real del usuario) arrancamos la música si hay una canción subida
+  if(hasRealSong()){
+    startMusic();
+    musicBtn.classList.add('playing');
+    musicBtn.textContent = '🔊';
+    isPlaying = true;
+  }
 });
 
 // =====================================================================
-// MÚSICA AMBIENTAL + SPOTIFY
+// MÚSICA: canción real subida en el admin (fiable) con fallback a un
+// tono ambiental generado si aún no se subió ninguna canción.
+// Los enlaces de Spotify NUNCA sonaban aquí dentro (solo abren la app
+// de Spotify por fuera) — por eso "no se escuchaba". Se dejan como
+// extra opcional en la pulsación larga.
 // =====================================================================
 let audioCtx = null;
 let ambientAudio = null;
 let isPlaying = false;
+const bgAudio = document.getElementById('bgAudio');
+// bgAudio.src ya se asigna en initApp() una vez llega MUSIC_AUDIO_SRC de Supabase
+function hasRealSong(){ return !!(MUSIC_AUDIO_SRC && MUSIC_AUDIO_SRC.trim()); }
+function startMusic(){ hasRealSong() ? bgAudio.play().catch(()=>{}) : startAmbient(); }
+function stopMusic(){ hasRealSong() ? bgAudio.pause() : stopAmbient(); }
 
 function createAmbientAudio(){
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -1125,13 +1150,13 @@ if(musicBtn){
   musicBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     if(!isPlaying){
-      startAmbient();
+      startMusic();
       musicBtn.classList.add('playing');
       musicBtn.textContent = '🔊';
       isPlaying = true;
-      showToast('🎵 Música ambiental activada');
+      showToast(hasRealSong() ? '🎵 Reproduciendo vuestra canción' : '🎵 Música ambiental activada');
     }else{
-      stopAmbient();
+      stopMusic();
       musicBtn.classList.remove('playing');
       musicBtn.textContent = '🎵';
       isPlaying = false;
@@ -1139,11 +1164,12 @@ if(musicBtn){
     }
   });
 
-  // Long press for Spotify menu
+  // Pulsación larga -> enlaces opcionales de Spotify (solo si hay alguno configurado)
   let pressTimer = null;
   musicBtn.addEventListener('pointerdown', (e) => {
     pressTimer = setTimeout(() => {
-      if(isPlaying) showSpotifyMenu(e.clientX, e.clientY);
+      const hasLinks = SPOTIFY_LINKS && SPOTIFY_LINKS.some(s => s.url && s.url.trim());
+      if(hasLinks) showSpotifyMenu(e.clientX, e.clientY);
     }, 600);
   });
   musicBtn.addEventListener('pointerup', () => clearTimeout(pressTimer));

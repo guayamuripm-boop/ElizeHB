@@ -120,12 +120,27 @@
     </div>
   </div>
 
-  <!-- Música & Spotify -->
+  <!-- Música -->
   <div class="card">
-    <h2>🎵 Música & Spotify</h2>
-    <p style="font-size:0.85rem; color:var(--rosa-vieja); margin-bottom:12px; font-style:italic;">Configura los enlaces a vuestras canciones especiales. Mantén pulsado el botón 🎵 en el jardín para verlos.</p>
+    <h2>🎵 Vuestra canción</h2>
+    <p style="font-size:0.85rem; color:var(--rosa-vieja); margin-bottom:12px; font-style:italic;">Sube el archivo de la canción (MP3). Sonará de verdad dentro del jardín al tocar 🎵 — los enlaces de Spotify de abajo NO suenan aquí, solo abren la app por fuera.</p>
+    <div class="image-upload" id="audioUpload" onclick="document.getElementById('audioFile').click()" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropAudio(event)">
+      <input type="file" id="audioFile" accept="audio/*" onchange="audioFileSelected(event)" style="display:none">
+      <div class="upload-content" id="audioUploadContent">
+        <span class="upload-icon">🎵</span>
+        <span class="upload-text" id="audioUploadText">Toca aquí o arrastra el MP3</span>
+        <span class="upload-hint">Recomendado: menos de 6MB (recorta la canción o usa 128kbps)</span>
+      </div>
+    </div>
+    <div class="url-hint">O pega una URL directa al audio: <input type="text" id="audioUrlInput" placeholder="https://.../cancion.mp3" onchange="updateAudioUrl(this.value)" style="width:100%;margin-top:8px;padding:8px;border:1px solid var(--rosa-suave);border-radius:4px;"></div>
+  </div>
+
+  <!-- Spotify (opcional, no suena dentro del jardín) -->
+  <div class="card">
+    <h2>🔗 Enlaces de Spotify (opcional)</h2>
+    <p style="font-size:0.85rem; color:var(--rosa-vieja); margin-bottom:12px; font-style:italic;">Solo abren la app/web de Spotify por fuera del jardín (mantén pulsado 🎵 para verlos). Si quieres que suene DENTRO del jardín, usa la subida de arriba.</p>
     <div class="message-lines" id="spotifyLinks"></div>
-    <button type="button" class="add-line" onclick="addSpotifyLink()">+ Añadir canción</button>
+    <button type="button" class="add-line" onclick="addSpotifyLink()">+ Añadir enlace</button>
   </div>
 
   <div class="btn-row">
@@ -282,6 +297,7 @@ function renderUI(){
   document.getElementById('letterSignature').value = currentData.letter?.signature || DEFAULTS.letter.signature;
 
   // Música
+  renderAudioUpload();
   renderMusic(currentData.music?.links || DEFAULTS.music.links);
 
   // Generar QR
@@ -392,6 +408,46 @@ function processImage(file, idx){
   }).catch(() => showMsg('❌ No se pudo procesar la imagen', 'error'));
 }
 
+// ============================================================
+// AUDIO UPLOAD (canción real que suena dentro del jardín)
+// ============================================================
+function dropAudio(e){
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if(file) processAudio(file);
+}
+function audioFileSelected(e){
+  const file = e.target.files[0];
+  if(file) processAudio(file);
+}
+function processAudio(file){
+  if(!file.type.startsWith('audio/')) return showMsg('Solo archivos de audio', 'error');
+  if(file.size > 9*1024*1024) return showMsg('Máx ~9MB: recorta la canción o usa un MP3 más comprimido (128kbps)', 'error');
+  showMsg('⏳ Subiendo canción…');
+  const reader = new FileReader();
+  reader.onload = e => {
+    currentData.music = currentData.music || {};
+    currentData.music.audioData = e.target.result;
+    currentData.music.audioUrl = ''; // el archivo subido manda sobre la URL
+    renderUI();
+    showMsg(`✅ Canción "${file.name}" lista para guardar`);
+  };
+  reader.onerror = () => showMsg('❌ No se pudo leer el archivo', 'error');
+  reader.readAsDataURL(file);
+}
+function updateAudioUrl(val){
+  currentData.music = currentData.music || {};
+  currentData.music.audioUrl = val.trim();
+  if(val.trim()) currentData.music.audioData = ''; // la URL manda si se usa este campo
+}
+function renderAudioUpload(){
+  const content = document.getElementById('audioUploadContent');
+  const hasFile = currentData.music && currentData.music.audioData;
+  content.querySelector('.upload-text').textContent = hasFile ? '🎶 Canción subida — toca para cambiarla' : 'Toca aquí o arrastra el MP3';
+  document.getElementById('audioUrlInput').value = (currentData.music && currentData.music.audioUrl) || '';
+}
+
 // Redimensiona a maxSize (lado mayor) y comprime a JPEG.
 // Reduce cada foto de ~2-8MB a ~150-400KB → carga rápida y fiable en móvil.
 function compressImage(file, maxSize, quality){
@@ -475,8 +531,8 @@ function renderSpotifyLinks() {
 }
 
 async function saveAll(){
-  // Collect music links
-  currentData.music = { links: [] };
+  // Collect Spotify links SIN perder la canción real ya subida (audioData/audioUrl)
+  currentData.music = { audioData: currentData.music?.audioData || '', audioUrl: currentData.music?.audioUrl || '', links: [] };
   document.querySelectorAll('#spotifyLinks .message-line').forEach(line => {
     const inputs = line.querySelectorAll('input');
     if (inputs.length >= 2) {
