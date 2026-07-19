@@ -43,7 +43,6 @@ function loadContent() {
     const stored = localStorage.getItem('jardin_content');
     if (stored) {
       const parsed = JSON.parse(stored);
-      // Merge con defaults para asegurar que no falten campos
       return { ...DEFAULTS, ...parsed, 
         photos: parsed.photos?.map((p, i) => ({ ...DEFAULTS.photos[i], ...p })) || DEFAULTS.photos,
         letter: { ...DEFAULTS.letter, ...(parsed.letter || {}) },
@@ -60,8 +59,8 @@ const CONTENT = loadContent();
 
 const MENSAJE = CONTENT.mensaje;
 const PHOTOS = CONTENT.photos;
-const LETTER_POS = { x: 0, z: -70 }; // Carta muy cerca
-const BOUNDS = 55; // Jardín más compacto
+const LETTER_POS = { x: 0, z: -70 };
+const BOUNDS = 55;
 const HER_NAME = CONTENT.herName;
 const MY_NAME = CONTENT.myName;
 const LETTER_CONTENT = CONTENT.letter;
@@ -71,25 +70,16 @@ const SPOTIFY_LINKS = CONTENT.music?.links || DEFAULTS.music.links;
 // PALETA
 // =====================================================================
 const COLORS = {
-  // Cielo y entorno
   skyDark:0x2a6ba8, skyMid:0x4a90d9, skyLight:0x7ec0f0, skyHorizon:0xc8e8ff,
   fogColor:0x7ec0f0,
   ground:0x3a5a2a, path:0x8d7a5a,
-  // Tulipanes
   tulipRed:0xc41e3a, tulipPink:0xe8a8c8, tulipYellow:0xf0d840, tulipWhite:0xf5f0e8, tulipOrange:0xe87a2a,
-  // Rosas
   roseRed:0xb82030, rosePink:0xf0a8c8, roseWhite:0xfaf0f0, rosePeach:0xf5c8a8,
-  // Gerberas
   gerberaRed:0xd01c1c, gerberaOrange:0xe87a2a, gerberaPink:0xf08ac8, gerberaYellow:0xf5d83a,
-  // Tallos y hojas
   stem:0x3a5a2a, leaf:0x4a7a3a,
-  // Centro flores
   center:0x2d2d1a,
-  // Polvo ambiental
   dustColors:[0xe8a8c8, 0xf0d840, 0xc8e8c8, 0xf5f0e8],
-  // Pétalos/estrellas
   petalFall:0xe8a8c8,
-  // Luces
   photoGlow:0xe8a8c8, altarGlow:0xf0d840
 };
 
@@ -97,21 +87,12 @@ const COLORS = {
 // ESCENA THREE.JS
 // =====================================================================
 let scene, camera, renderer, clock;
-let flowerMesh = null; // InstancedMesh para flores
-let dustPoints, petalPoints;
+let flowerObjs = [], dustPoints, starPoints;
 let yaw = 0, pitch = 0;
 let moveVec = { x:0, y:0 };
 let walking = false, walkTime = 0;
 let nearestPOI = null;
 let visited = new Set();
-
-// Instanced flower data
-const MAX_FLOWERS = 180; // Más flores, pero instanciadas (rápido)
-const flowerMatrices = [];
-const flowerTypes = []; // 0 = tulip, 1 = gerbera
-const flowerColors = [];
-const flowerScales = [];
-const flowerSeeds = [];
 
 // DOM elements (needed before animate starts)
 const promptEl = document.getElementById('prompt');
@@ -119,11 +100,9 @@ const promptTextEl = document.getElementById('promptText');
 
 // Apply dynamic content to DOM
 function applyDynamicContent() {
-  // Intro title
   const introTitle = document.getElementById('introTitle');
   if (introTitle) introTitle.textContent = `Feliz Cumpleaños, ${HER_NAME}`;
 
-  // Letter content
   const letterGreeting = document.getElementById('letterGreeting');
   if (letterGreeting) letterGreeting.textContent = LETTER_CONTENT.greeting || `Querida ${HER_NAME},`;
 
@@ -144,21 +123,35 @@ animate();
 function init3D(){
   scene = new THREE.Scene();
 
-  // ---- cielo degradado (canvas -> textura de fondo) ----
+  // ---- cielo con nubes (canvas -> textura) ----
   const skyCanvas = document.createElement('canvas');
-  skyCanvas.width = 8; skyCanvas.height = 256;
+  skyCanvas.width = 512; skyCanvas.height = 256;
   const sctx = skyCanvas.getContext('2d');
+  
+  // Degradado cielo
   const grad = sctx.createLinearGradient(0,0,0,256);
-  grad.addColorStop(0, '#2a6ba8');
-  grad.addColorStop(0.25, '#4a90d9');
-  grad.addColorStop(0.55, '#7ec0f0');
+  grad.addColorStop(0, '#1a4a8a');
+  grad.addColorStop(0.2, '#2a6ba8');
+  grad.addColorStop(0.5, '#4a90d9');
+  grad.addColorStop(0.8, '#7ec0f0');
   grad.addColorStop(1, '#c8e8ff');
-  sctx.fillStyle = grad; sctx.fillRect(0,0,8,256);
+  sctx.fillStyle = grad; sctx.fillRect(0,0,512,256);
+  
+  // Nubes procedurales
+  sctx.fillStyle = 'rgba(255,255,255,0.8)';
+  for(let i=0;i<12;i++){
+    const cx = Math.random()*512;
+    const cy = Math.random()*120 + 20;
+    const w = 60 + Math.random()*80;
+    const h = 25 + Math.random()*20;
+    drawCloud(sctx, cx, cy, w, h);
+  }
+  
   const skyTex = new THREE.CanvasTexture(skyCanvas);
   scene.background = skyTex;
 
   // niebla con color del horizonte -> mezcla el suelo con el cielo sin cortes
-  scene.fog = new THREE.FogExp2(0x7ec0f0, 0.02);
+  scene.fog = new THREE.FogExp2(0x7ec0f0, 0.018);
 
   // ---- cámara ----
   camera = new THREE.PerspectiveCamera(62, window.innerWidth/window.innerHeight, 0.1, 400);
@@ -167,7 +160,7 @@ function init3D(){
 
   // ---- render ----
   try{
-    renderer = new THREE.WebGLRenderer({ antialias:true });
+    renderer = new THREE.WebGLRenderer({ antialias:true, powerPreference: "high-performance" });
   }catch(e){
     document.getElementById('loadingNote').textContent = 'Tu navegador no soporta gráficos 3D. Prueba con Chrome actualizado.';
     return;
@@ -177,9 +170,9 @@ function init3D(){
   document.getElementById('gameContainer').appendChild(renderer.domElement);
 
   // ---- luces ----
-  scene.add(new THREE.AmbientLight(0xffffee, 0.6));
-  const dir = new THREE.DirectionalLight(0xfff8e8, 0.9);
-  dir.position.set(-20, 35, 10);
+  scene.add(new THREE.AmbientLight(0xffffee, 0.7));
+  const dir = new THREE.DirectionalLight(0xfff8e8, 1.0);
+  dir.position.set(-25, 40, 15);
   scene.add(dir);
 
   // ---- suelo ----
@@ -190,23 +183,23 @@ function init3D(){
   scene.add(ground);
 
   // ---- camino sutil ----
-  const pathGeo = new THREE.PlaneGeometry(4, 90);
+  const pathGeo = new THREE.PlaneGeometry(3.5, 80);
   const pathMat = new THREE.MeshStandardMaterial({ color:0x8d7a5a, roughness:1, transparent:true, opacity:0.3 });
   const path = new THREE.Mesh(pathGeo, pathMat);
   path.rotation.x = -Math.PI/2;
-  path.position.set(0, 0.01, -35);
+  path.position.set(0, 0.01, -30);
   scene.add(path);
 
-  // ---- campo de flores (InstancedMesh para rendimiento) ----
+  // ---- flores densas y realistas ----
   initFlowers();
 
-  // ---- polvo de flores de fondo (volumen/profundidad) ----
+  // ---- polvo atmosférico ----
   dustPoints = createDust();
   scene.add(dustPoints);
 
-  // ---- pétalos cayendo ambientales ----
-  petalPoints = createPetals();
-  scene.add(petalPoints);
+  // ---- estrellas en el cielo ----
+  starPoints = createStars();
+  scene.add(starPoints);
 
   // ---- puntos de interés: fotos ----
   PHOTOS.forEach((p, idx) => {
@@ -225,6 +218,15 @@ function init3D(){
   clock = new THREE.Clock();
 }
 
+function drawCloud(ctx, x, y, w, h) {
+  ctx.beginPath();
+  ctx.ellipse(x, y, w*0.5, h*0.5, 0, 0, Math.PI*2);
+  ctx.ellipse(x + w*0.3, y - h*0.15, w*0.35, h*0.35, 0, 0, Math.PI*2);
+  ctx.ellipse(x - w*0.3, y - h*0.1, w*0.35, h*0.3, 0, 0, Math.PI*2);
+  ctx.ellipse(x + w*0.15, y + h*0.2, w*0.3, h*0.25, 0, 0, Math.PI*2);
+  ctx.fill();
+}
+
 function onResize(){
   camera.aspect = window.innerWidth/window.innerHeight;
   camera.updateProjectionMatrix();
@@ -232,369 +234,259 @@ function onResize(){
 }
 
 // =====================================================================
-// GEOMETRÍA: InstancedMesh flores, polvo, pétalos, marcos de foto, altar
+// FLORES REALISTAS: Tulipanes, Rosas, Gerberas
 // =====================================================================
-
-// Pre-built geometries for instanced flowers
-let tulipGeometry = null;
-let gerberaGeometry = null;
-let stemGeometry = null;
-let leafGeometry = null;
-let centerGeometry = null;
-
-function buildFlowerGeometries(){
-  // Geometrías base compartidas
-  stemGeometry = new THREE.CylinderGeometry(0.025, 0.04, 0.9, 5);
-  leafGeometry = new THREE.SphereGeometry(0.18, 5, 5);
-  leafGeometry.scale(1, 0.18, 0.6);
-  centerGeometry = new THREE.SphereGeometry(0.1, 6, 6);
-
-  // Tulipán: tallo + 6 pétalos + centro + 2 hojas = 10 instancias base
-  const tulipParts = [];
-  
-  // Tallo
-  tulipParts.push({ geo: stemGeometry, pos: new THREE.Vector3(0, 0.45, 0), rot: new THREE.Euler() });
-  
-  // Pétalos externos (3)
-  const petalGeo = new THREE.SphereGeometry(0.14, 6, 6);
-  petalGeo.scale(1, 0.35, 0.7);
-  for(let i=0;i<3;i++){
-    const ang = (i/3) * Math.PI*2;
-    tulipParts.push({ 
-      geo: petalGeo, 
-      pos: new THREE.Vector3(Math.cos(ang)*0.1, 0.92, Math.sin(ang)*0.1),
-      rot: new THREE.Euler(-0.3, ang, 0)
-    });
-  }
-  // Pétalos internos (3)
-  const innerGeo = new THREE.SphereGeometry(0.1, 6, 6);
-  innerGeo.scale(1, 0.3, 0.6);
-  for(let i=0;i<3;i++){
-    const ang = (i/3) * Math.PI*2 + Math.PI/3;
-    tulipParts.push({ 
-      geo: innerGeo, 
-      pos: new THREE.Vector3(Math.cos(ang)*0.07, 0.95, Math.sin(ang)*0.07),
-      rot: new THREE.Euler(-0.4, ang, 0),
-      scale: 0.7
-    });
-  }
-  // Centro
-  tulipParts.push({ geo: centerGeometry, pos: new THREE.Vector3(0, 0.95, 0), rot: new THREE.Euler() });
-  // Hojas (2)
-  for(let i=0;i<2;i++){
-    const lang = (i/2) * Math.PI*2;
-    tulipParts.push({ 
-      geo: leafGeometry, 
-      pos: new THREE.Vector3(Math.cos(lang)*0.15, 0.25, Math.sin(lang)*0.15),
-      rot: new THREE.Euler(0, lang, 0.6 + Math.random()*0.3)
-    });
-  }
-  
-  // Gerbera: tallo + 24 pétalos + centro + 3 hojas = 29 instancias base
-  const gerberaParts = [];
-  gerberaParts.push({ geo: stemGeometry, pos: new THREE.Vector3(0, 0.45, 0), rot: new THREE.Euler() });
-  
-  const gerbPetalGeo = new THREE.SphereGeometry(0.1, 5, 5);
-  gerbPetalGeo.scale(1, 0.15, 0.8);
-  // Capa externa (14)
-  for(let i=0;i<14;i++){
-    const ang = (i/14) * Math.PI*2;
-    const radius = 0.22 + Math.sin(i*0.5)*0.03;
-    gerberaParts.push({ 
-      geo: gerbPetalGeo, 
-      pos: new THREE.Vector3(Math.cos(ang)*radius, 0.9, Math.sin(ang)*radius),
-      rot: new THREE.Euler(-0.1, ang, 0)
-    });
-  }
-  // Capa interna (10)
-  for(let i=0;i<10;i++){
-    const ang = (i/10) * Math.PI*2 + Math.PI/10;
-    gerberaParts.push({ 
-      geo: gerbPetalGeo, 
-      pos: new THREE.Vector3(Math.cos(ang)*0.14, 0.92, Math.sin(ang)*0.14),
-      rot: new THREE.Euler(-0.05, ang, 0),
-      scale: 0.85
-    });
-  }
-  // Centro
-  gerberaParts.push({ geo: centerGeometry, pos: new THREE.Vector3(0, 0.92, 0), rot: new THREE.Euler(), scale: 1.2 });
-  // Hojas (3)
-  for(let i=0;i<3;i++){
-    const lang = (i/3) * Math.PI*2;
-    gerberaParts.push({ 
-      geo: leafGeometry, 
-      pos: new THREE.Vector3(Math.cos(lang)*0.15, 0.25, Math.sin(lang)*0.15),
-      rot: new THREE.Euler(0, lang, 0.6 + Math.random()*0.3)
-    });
-  }
-
-  // Crear geometrías combinadas para InstancedMesh
-  tulipGeometry = new THREE.InstancedBufferGeometry();
-  gerberaGeometry = new THREE.InstancedBufferGeometry();
-  
-  // Para simplicidad, usamos un enfoque diferente: una geometría base simple y matrices de transformación
-  // Creamos una geometría base simple (un triángulo/plano) y usamos matrices para posicionar cada parte
-  const baseGeo = new THREE.BufferGeometry();
-  baseGeo.setAttribute('position', new THREE.Float32BufferAttribute([-0.5,0,0, 0.5,0,0, 0,1,0], 3));
-  baseGeo.setAttribute('uv', new THREE.Float32BufferAttribute([0,1, 1,1, 0.5,0], 2));
-  
-  tulipGeometry = baseGeo;
-  gerberaGeometry = baseGeo.clone();
-}
-
 function initFlowers(){
-  // Flores: tulipanes, rosas, gerberas - MUY densas y cerca del inicio
   const tulipColors = [COLORS.tulipRed, COLORS.tulipPink, COLORS.tulipYellow, COLORS.tulipWhite, COLORS.tulipOrange];
   const roseColors = [COLORS.roseRed, COLORS.rosePink, COLORS.roseWhite, COLORS.rosePeach];
   const gerberaColors = [COLORS.gerberaRed, COLORS.gerberaOrange, COLORS.gerberaPink, COLORS.gerberaYellow];
   
   // Área: empieza YA desde el inicio, muy densa
-  const areaWidth = 50;  // más ancho para sentir inmersión
-  const areaDepth = 100; // menos profundo, todo concentrado
-  const spacing = 1.3;   // MUY denso (era 2.2)
+  const areaWidth = 55;
+  const areaDepth = 80;
+  const spacing = 1.15; // Muy denso
   
   for(let z = 0; z > -areaDepth; z -= spacing){
     for(let x = -areaWidth/2; x < areaWidth/2; x += spacing){
-      const jitterX = (Math.random()-0.5) * 0.9;
-      const jitterZ = (Math.random()-0.5) * 0.9;
+      const jitterX = (Math.random()-0.5) * 0.8;
+      const jitterZ = (Math.random()-0.5) * 0.8;
       const fx = x + jitterX;
       const fz = z + jitterZ;
       
-      // Camino más estrecho para más flores al lado
-      if(Math.abs(fx) < 1.5) continue;
+      // Camino estrecho
+      if(Math.abs(fx) < 1.4) continue;
       
-      // 3 tipos: 35% tulipanes, 30% rosas, 35% gerberas
       const r = Math.random();
-      let isTulip, isRose, colors;
-      if(r < 0.35){
-        isTulip = true; isRose = false;
-        colors = tulipColors;
-      }else if(r < 0.65){
-        isTulip = false; isRose = true;
-        colors = roseColors;
+      let isTulip = false, isRose = false, colors;
+      if(r < 0.34){
+        isTulip = true; colors = tulipColors;
+      }else if(r < 0.66){
+        isRose = true; colors = roseColors;
       }else{
-        isTulip = false; isRose = false;
         colors = gerberaColors;
       }
       const color = colors[Math.floor(Math.random()*colors.length)];
-      const scale = 0.7 + Math.random()*0.6;
+      const scale = 0.75 + Math.random()*0.5;
       
-      const f = createSimpleFlower(fx, fz, color, scale, isTulip, isRose);
+      const f = createRealFlower(fx, fz, color, scale, isTulip, isRose);
       scene.add(f);
       flowerObjs.push(f);
     }
   }
 }
 
-function createFlowerSprite(){
-  // Sprite simple de flor para Points
-  const canvas = document.createElement('canvas');
-  canvas.width = 64; canvas.height = 64;
-  const ctx = canvas.getContext('2d');
-  const grad = ctx.createRadialGradient(32,32,0, 32,32,32);
-  grad.addColorStop(0, 'rgba(255,255,255,1)');
-  grad.addColorStop(0.5, 'rgba(255,255,255,0.5)');
-  grad.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0,0,64,64);
-  return new THREE.CanvasTexture(canvas);
-}
-
-function createSimpleFlower(x, z, colorHex, scale, isTulip, isRose){
+function createRealFlower(x, z, colorHex, scale, isTulip, isRose){
   const group = new THREE.Group();
   
-  // Tallo simple
-  const stem = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.02, 0.035, 0.8, 4),
-    new THREE.MeshStandardMaterial({ color:COLORS.stem, roughness:0.9 })
-  );
-  stem.position.y = 0.4;
+  // Tallo con ligera curva
+  const stemCurve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0, 0, 0),
+    new THREE.Vector3((Math.random()-0.5)*0.05, 0.35, 0),
+    new THREE.Vector3((Math.random()-0.5)*0.08, 0.7, 0),
+    new THREE.Vector3(0, 0.9, 0)
+  ]);
+  const stemGeo = new THREE.TubeGeometry(stemCurve, 8, 0.022, 4, false);
+  const stemMat = new THREE.MeshStandardMaterial({ color:COLORS.stem, roughness:0.9 });
+  const stem = new THREE.Mesh(stemGeo, stemMat);
   group.add(stem);
-  
+
+  const petalMat = new THREE.MeshStandardMaterial({ 
+    color:colorHex, emissive:colorHex, emissiveIntensity:0.1, 
+    roughness:0.35, metalness:0.05, side:THREE.DoubleSide 
+  });
+  const petalMatInner = new THREE.MeshStandardMaterial({ 
+    color:colorHex, emissive:colorHex, emissiveIntensity:0.12, 
+    roughness:0.3, metalness:0.05, side:THREE.DoubleSide 
+  });
+
   if(isTulip){
-    // Tulipán: 3 pétalos curvados (copa)
-    const petalGeo = new THREE.SphereGeometry(0.13, 5, 5);
-    petalGeo.scale(1, 0.3, 0.65);
-    const petalMat = new THREE.MeshStandardMaterial({ color:colorHex, emissive:colorHex, emissiveIntensity:0.08, roughness:0.4 });
+    // TULIPÁN: 6 pétalos en forma de copa (3 externos + 3 internos)
+    // Pétalos externos - más grandes, curvados hacia arriba
     for(let i=0;i<3;i++){
       const ang = (i/3)*Math.PI*2;
-      const petal = new THREE.Mesh(petalGeo, petalMat);
-      petal.position.set(Math.cos(ang)*0.1, 0.88, Math.sin(ang)*0.1);
+      const petal = createTulipPetal(petalMat, true);
+      petal.position.set(Math.cos(ang)*0.12, 0.88, Math.sin(ang)*0.12);
       petal.rotation.y = ang;
-      petal.rotation.x = -0.35;
+      petal.rotation.x = -0.45;
+      petal.rotation.z = 0.15;
+      group.add(petal);
+    }
+    // Pétalos internos - más pequeños, más cerrados
+    for(let i=0;i<3;i++){
+      const ang = (i/3)*Math.PI*2 + Math.PI/3;
+      const petal = createTulipPetal(petalMatInner, false);
+      petal.position.set(Math.cos(ang)*0.07, 0.94, Math.sin(ang)*0.07);
+      petal.rotation.y = ang;
+      petal.rotation.x = -0.55;
+      petal.rotation.z = 0.1;
+      petal.scale.setScalar(0.75);
       group.add(petal);
     }
     // Centro
-    const center = new THREE.Mesh(new THREE.SphereGeometry(0.05, 5, 5), new THREE.MeshStandardMaterial({ color:COLORS.center }));
-    center.position.y = 0.9;
+    const center = new THREE.Mesh(
+      new THREE.SphereGeometry(0.05, 8, 8),
+      new THREE.MeshStandardMaterial({ color:COLORS.center, roughness:0.3, metalness:0.2 })
+    );
+    center.position.y = 0.96;
     group.add(center);
-  }else if(isRose){
-    // Rosa: pétalos en espiral (capullo abierto)
-    const petalGeo = new THREE.SphereGeometry(0.1, 5, 5);
-    petalGeo.scale(1, 0.18, 0.7);
-    const petalMat = new THREE.MeshStandardMaterial({ color:colorHex, emissive:colorHex, emissiveIntensity:0.12, roughness:0.35, metalness:0.05 });
     
-    // Capa exterior (5 pétalos)
-    for(let i=0;i<5;i++){
-      const ang = (i/5)*Math.PI*2;
+  }else if(isRose){
+    // ROSA: Pétalos en espiral (capas)
+    const petalGeo = createRosePetalGeometry();
+    
+    // Capa exterior (7 pétalos)
+    for(let i=0;i<7;i++){
+      const ang = (i/7)*Math.PI*2;
       const petal = new THREE.Mesh(petalGeo, petalMat);
-      petal.position.set(Math.cos(ang)*0.16, 0.85, Math.sin(ang)*0.16);
+      petal.position.set(Math.cos(ang)*0.18, 0.82, Math.sin(ang)*0.18);
       petal.rotation.y = ang;
       petal.rotation.x = -0.15;
-      petal.rotation.z = 0.1;
+      petal.rotation.z = 0.12;
       group.add(petal);
     }
-    // Capa media (4 pétalos)
-    for(let i=0;i<4;i++){
-      const ang = (i/4)*Math.PI*2 + Math.PI/4;
-      const petal = new THREE.Mesh(petalGeo, petalMat);
-      petal.position.set(Math.cos(ang)*0.11, 0.9, Math.sin(ang)*0.11);
+    // Capa media (5 pétalos)
+    for(let i=0;i<5;i++){
+      const ang = (i/5)*Math.PI*2 + Math.PI/5;
+      const petal = new THREE.Mesh(petalGeo, petalMatInner);
+      petal.position.set(Math.cos(ang)*0.12, 0.88, Math.sin(ang)*0.12);
       petal.rotation.y = ang;
       petal.rotation.x = -0.25;
       petal.rotation.z = 0.08;
       petal.scale.setScalar(0.85);
       group.add(petal);
     }
-    // Capa interior (3 pétalos - capullo)
-    for(let i=0;i<3;i++){
-      const ang = (i/3)*Math.PI*2;
-      const petal = new THREE.Mesh(petalGeo, petalMat);
-      petal.position.set(Math.cos(ang)*0.06, 0.95, Math.sin(ang)*0.06);
+    // Capa interior - capullo (4 pétalos)
+    for(let i=0;i<4;i++){
+      const ang = (i/4)*Math.PI*2;
+      const petal = new THREE.Mesh(petalGeo, petalMatInner);
+      petal.position.set(Math.cos(ang)*0.06, 0.94, Math.sin(ang)*0.06);
       petal.rotation.y = ang;
-      petal.rotation.x = -0.4;
+      petal.rotation.x = -0.45;
       petal.scale.setScalar(0.65);
       group.add(petal);
     }
     // Centro
-    const center = new THREE.Mesh(new THREE.SphereGeometry(0.05, 5, 5), new THREE.MeshStandardMaterial({ color:COLORS.center }));
+    const center = new THREE.Mesh(
+      new THREE.SphereGeometry(0.04, 8, 8),
+      new THREE.MeshStandardMaterial({ color:COLORS.center, roughness:0.3, metalness:0.2 })
+    );
     center.position.y = 0.96;
     group.add(center);
+    
   }else{
-    // Gerbera: 12 pétalos planos en 2 capas
-    const petalGeo = new THREE.SphereGeometry(0.09, 4, 4);
-    petalGeo.scale(1, 0.12, 0.75);
-    const petalMat = new THREE.MeshStandardMaterial({ color:colorHex, emissive:colorHex, emissiveIntensity:0.1, roughness:0.5 });
-    // Capa exterior
-    for(let i=0;i<12;i++){
-      const ang = (i/12)*Math.PI*2;
+    // GERBERA: 2 capas de pétalos planos
+    const petalGeo = createGerberaPetalGeometry();
+    
+    // Capa exterior (14 pétalos)
+    for(let i=0;i<14;i++){
+      const ang = (i/14)*Math.PI*2;
       const petal = new THREE.Mesh(petalGeo, petalMat);
-      petal.position.set(Math.cos(ang)*0.18, 0.86, Math.sin(ang)*0.18);
+      const radius = 0.2 + Math.sin(i*0.7)*0.02;
+      petal.position.set(Math.cos(ang)*radius, 0.85, Math.sin(ang)*radius);
       petal.rotation.y = ang;
       petal.rotation.x = -0.08;
       group.add(petal);
     }
-    // Capa interior
-    for(let i=0;i<8;i++){
-      const ang = (i/8)*Math.PI*2 + Math.PI/8;
-      const petal = new THREE.Mesh(petalGeo, petalMat);
-      petal.position.set(Math.cos(ang)*0.12, 0.89, Math.sin(ang)*0.12);
+    // Capa interior (10 pétalos)
+    for(let i=0;i<10;i++){
+      const ang = (i/10)*Math.PI*2 + Math.PI/10;
+      const petal = new THREE.Mesh(petalGeo, petalMatInner);
+      petal.position.set(Math.cos(ang)*0.13, 0.89, Math.sin(ang)*0.13);
       petal.rotation.y = ang;
-      petal.rotation.x = -0.04;
+      petal.rotation.x = -0.03;
       petal.scale.setScalar(0.8);
       group.add(petal);
     }
-    // Centro
-    const center = new THREE.Mesh(new THREE.SphereGeometry(0.1, 5, 5), new THREE.MeshStandardMaterial({ color:COLORS.center }));
+    // Centro prominente
+    const center = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.1, 0.12, 0.05, 16),
+      new THREE.MeshStandardMaterial({ color:COLORS.center, roughness:0.3, metalness:0.15 })
+    );
     center.position.y = 0.88;
     group.add(center);
   }
-  
-  // 2-3 hojas
+
+  // Hojas (2-3)
   const leafCount = isRose ? 3 : 2;
   for(let i=0;i<leafCount;i++){
     const leaf = new THREE.Mesh(
-      new THREE.SphereGeometry(0.15, 4, 4),
+      new THREE.SphereGeometry(0.16, 6, 6),
       new THREE.MeshStandardMaterial({ color:COLORS.leaf, roughness:0.9 })
     );
-    leaf.scale.set(1, 0.15, 0.5);
+    leaf.scale.set(1, 0.16, 0.55);
     const lang = (i/leafCount)*Math.PI*2;
-    leaf.position.set(Math.cos(lang)*0.12, 0.2, Math.sin(lang)*0.12);
-    leaf.rotation.z = 0.5;
+    leaf.position.set(Math.cos(lang)*0.14, 0.22, Math.sin(lang)*0.14);
+    leaf.rotation.z = 0.55 + Math.random()*0.2;
     leaf.rotation.y = lang;
     group.add(leaf);
   }
-  
+
   group.position.set(x, 0, z);
   group.scale.setScalar(scale);
-  group.userData.seed = Math.random()*10;
+  group.userData.seed = Math.random()*100;
   return group;
 }
 
+function createTulipPetal(mat, isOuter){
+  const geo = new THREE.SphereGeometry(isOuter ? 0.14 : 0.1, 8, 8);
+  geo.scale(1, isOuter ? 0.3 : 0.25, isOuter ? 0.7 : 0.6);
+  return new THREE.Mesh(geo, mat);
+}
+
+function createRosePetalGeometry(){
+  const geo = new THREE.SphereGeometry(0.11, 6, 6);
+  geo.scale(1, 0.18, 0.75);
+  return geo;
+}
+
+function createGerberaPetalGeometry(){
+  const geo = new THREE.SphereGeometry(0.09, 5, 5);
+  geo.scale(1, 0.12, 0.8);
+  return geo;
+}
+
 function createDust(){
-  const count = 200; // Reducido de 500 para mejor rendimiento
+  const count = 150;
   const positions = new Float32Array(count*3);
   const colors = new Float32Array(count*3);
   const palette = [COLORS.tulipPink, COLORS.tulipYellow, COLORS.gerberaOrange, COLORS.cream];
   const c = new THREE.Color();
   for(let i=0;i<count;i++){
-    positions[i*3+0] = (Math.random()-0.5) * 120;
-    positions[i*3+1] = 0.3 + Math.random()*2.0;
-    positions[i*3+2] = -Math.random()*100 + 10;
+    positions[i*3] = (Math.random()-0.5) * 100;
+    positions[i*3+1] = 0.5 + Math.random()*2.5;
+    positions[i*3+2] = -Math.random()*80 - 5;
     c.set(palette[Math.floor(Math.random()*palette.length)]);
-    colors[i*3+0] = c.r; colors[i*3+1] = c.g; colors[i*3+2] = c.b;
+    colors[i*3] = c.r; colors[i*3+1] = c.g; colors[i*3+2] = c.b;
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(positions,3));
   geo.setAttribute('color', new THREE.BufferAttribute(colors,3));
   const mat = new THREE.PointsMaterial({
-    size:1.1, map:dotTexture(), vertexColors:true, transparent:true,
-    depthWrite:false, sizeAttenuation:true, opacity:0.85
+    size:1.0, map:createParticleTexture(), vertexColors:true, transparent:true,
+    depthWrite:false, sizeAttenuation:true, opacity:0.8
   });
   return new THREE.Points(geo, mat);
 }
 
-function createPetals(){
-  const count = 60; // Estrellas
+function createStars(){
+  const count = 80;
   const positions = new Float32Array(count*3);
   for(let i=0;i<count;i++){
-    positions[i*3+0] = (Math.random()-0.5) * 80;
-    positions[i*3+1] = 8 + Math.random()*15;
-    positions[i*3+2] = (Math.random()-0.5) * 80;
+    positions[i*3] = (Math.random()-0.5) * 120;
+    positions[i*3+1] = 10 + Math.random()*20;
+    positions[i*3+2] = (Math.random()-0.5) * 120;
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(positions,3));
   const mat = new THREE.PointsMaterial({
-    size: 0.5, color: 0xfff8e8, map: starTexture(), transparent: true,
+    size: 0.6, color: 0xfff8e8, map:createStarTexture(), transparent: true,
     depthWrite: false, opacity: 0.9, sizeAttenuation: true
   });
   const pts = new THREE.Points(geo, mat);
-  pts.userData.speeds = new Float32Array(count).map(() => 0.02 + Math.random()*0.03);
-  pts.userData.phases = new Float32Array(count).map(() => Math.random()*Math.PI*2);
   return pts;
 }
 
-function starTexture(){
-  const c = document.createElement('canvas'); c.width = c.height = 128;
-  const ctx = c.getContext('2d');
-  // Dibuja estrella de 5 puntas
-  ctx.fillStyle = 'white';
-  ctx.translate(64, 64);
-  for(let i=0;i<5;i++){
-    ctx.rotate(Math.PI*2/5);
-    ctx.beginPath();
-    ctx.moveTo(0, -40);
-    ctx.lineTo(9, -12);
-    ctx.lineTo(38, -12);
-    ctx.lineTo(14, 6);
-    ctx.lineTo(22, 38);
-    ctx.lineTo(0, 18);
-    ctx.lineTo(-22, 38);
-    ctx.lineTo(-14, 6);
-    ctx.lineTo(-38, -12);
-    ctx.lineTo(-9, -12);
-    ctx.closePath();
-    ctx.fill();
-  }
-  // Brillo central
-  const grad = ctx.createRadialGradient(0,0,0, 0,0,50);
-  grad.addColorStop(0, 'rgba(255,255,255,1)');
-  grad.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = grad;
-  ctx.beginPath(); ctx.arc(0,0,50,0,Math.PI*2); ctx.fill();
-  return new THREE.CanvasTexture(c);
-}
-
-function dotTexture(){
+function createParticleTexture(){
   const c = document.createElement('canvas'); c.width = c.height = 64;
   const ctx = c.getContext('2d');
   const g = ctx.createRadialGradient(32,32,0,32,32,32);
@@ -604,10 +496,41 @@ function dotTexture(){
   return new THREE.CanvasTexture(c);
 }
 
+function createStarTexture(){
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = 'white';
+  ctx.translate(64, 64);
+  for(let i=0;i<5;i++){
+    ctx.rotate(Math.PI*2/5);
+    ctx.beginPath();
+    ctx.moveTo(0, -45);
+    ctx.lineTo(10, -14);
+    ctx.lineTo(42, -14);
+    ctx.lineTo(16, 6);
+    ctx.lineTo(24, 38);
+    ctx.lineTo(0, 20);
+    ctx.lineTo(-24, 38);
+    ctx.lineTo(-16, 6);
+    ctx.lineTo(-42, -14);
+    ctx.lineTo(-10, -14);
+    ctx.closePath();
+    ctx.fill();
+  }
+  const g = ctx.createRadialGradient(0,0,0, 0,0,55);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0,0,55,0,Math.PI*2); ctx.fill();
+  return new THREE.CanvasTexture(c);
+}
+
+// =====================================================================
+// MARCO DE FOTO Y ALTAR
+// =====================================================================
 function createPhotoFrame(p, idx){
   const group = new THREE.Group();
 
-  // marco dorado
+  // Marco dorado
   const frame = new THREE.Mesh(
     new THREE.PlaneGeometry(1.9, 2.35),
     new THREE.MeshStandardMaterial({ color:COLORS.gold, roughness:0.4, metalness:0.15 })
@@ -615,11 +538,11 @@ function createPhotoFrame(p, idx){
   frame.position.z = -0.02;
   group.add(frame);
 
-  // Cargar imagen real si existe, sino placeholder
+  // Foto - carga imagen real o placeholder
   const loader = new THREE.TextureLoader();
   const photoGeo = new THREE.PlaneGeometry(1.6, 2.0);
   
-  function createPlaceholder() {
+  function makePlaceholder(){
     const canvas = document.createElement('canvas');
     canvas.width = 512; canvas.height = 640;
     const ctx = canvas.getContext('2d');
@@ -635,44 +558,30 @@ function createPhotoFrame(p, idx){
   }
 
   let photoMesh;
-  if (p.image && p.image.trim()) {
+  if (p.image && p.image.trim()){
     const tex = loader.load(p.image.trim(),
-      (texture) => {
-        texture.colorSpace = THREE.SRGBColorSpace;
-        if (photoMesh && photoMesh.material) {
+      (texture) => { texture.colorSpace = THREE.SRGBColorSpace; 
+        if(photoMesh && photoMesh.material){
           photoMesh.material.map = texture;
           photoMesh.material.emissiveMap = texture;
           photoMesh.material.needsUpdate = true;
         }
       },
       undefined,
-      (err) => {
-        console.warn('Error cargando imagen:', p.image, err);
-        if (photoMesh && photoMesh.material) {
-          photoMesh.material.map = createPlaceholder();
+      (err) => { if(photoMesh && photoMesh.material){
+          photoMesh.material.map = makePlaceholder();
           photoMesh.material.emissiveMap = photoMesh.material.map;
           photoMesh.material.needsUpdate = true;
         }
       }
     );
     tex.colorSpace = THREE.SRGBColorSpace;
-    const mat = new THREE.MeshStandardMaterial({ 
-      map: tex, 
-      emissive: 0xffffff, 
-      emissiveMap: tex, 
-      emissiveIntensity: 0.12 
-    });
+    const mat = new THREE.MeshStandardMaterial({ map:tex, emissive:0xffffff, emissiveMap:tex, emissiveIntensity:0.12 });
     photoMesh = new THREE.Mesh(photoGeo, mat);
-  } else {
-    const mat = new THREE.MeshStandardMaterial({ 
-      map: createPlaceholder(), 
-      emissive: 0xffffff, 
-      emissiveMap: createPlaceholder(), 
-      emissiveIntensity: 0.12 
-    });
+  }else{
+    const mat = new THREE.MeshStandardMaterial({ map:makePlaceholder(), emissive:0xffffff, emissiveMap:makePlaceholder(), emissiveIntensity:0.12 });
     photoMesh = new THREE.Mesh(photoGeo, mat);
   }
-  
   photoMesh.position.z = 0.01;
   group.add(photoMesh);
 
@@ -699,7 +608,7 @@ function createAltar(){
   base.position.y = 0.25;
   group.add(base);
 
-  // "carta" flotante (canvas con sobre)
+  // Sobre flotante
   const canvas = document.createElement('canvas');
   canvas.width = 400; canvas.height = 300;
   const ctx = canvas.getContext('2d');
@@ -719,7 +628,7 @@ function createAltar(){
   group.add(env);
   group.userData = { type:'letter', envelope:env, baseY:1.55 };
 
-  const glow = new THREE.PointLight(COLORS.gold, 1.1, 9);
+  const glow = new THREE.PointLight(COLORS.altarGlow, 1.1, 9);
   glow.position.y = 1.7;
   group.add(glow);
   group.userData.glowLight = glow;
@@ -738,7 +647,7 @@ function animate(){
 
   updateMovement(dt);
   updateFlowers();
-  updatePetals(dt);
+  updateStars(dt);
   updatePOIs(dt);
 
   renderer.render(scene, camera);
@@ -757,7 +666,7 @@ function updateMovement(dt){
     const mx = (fx * -moveVec.y + rx * moveVec.x) * speed * dt;
     const mz = (fz * -moveVec.y + rz * moveVec.x) * speed * dt;
     camera.position.x = clamp(camera.position.x + mx, -BOUNDS, BOUNDS);
-    camera.position.z = clamp(camera.position.z + mz, -BOUNDS-5, BOUNDS-100);
+    camera.position.z = clamp(camera.position.z + mz, -BOUNDS-5, BOUNDS-80);
     camera.position.y = 1.6 + Math.sin(walkTime*7.5) * 0.035;
   } else {
     walking = false;
@@ -767,24 +676,20 @@ function updateMovement(dt){
 
 function clamp(v,min,max){ return Math.max(min, Math.min(max,v)); }
 
-// Simplified flower update - subtle sway for flower groups
 function updateFlowers(){
   const t = walkTime;
   flowerObjs.forEach(f => {
-    f.rotation.z = Math.sin(t*0.6 + f.userData.seed) * 0.025;
+    f.rotation.z = Math.sin(t*0.5 + f.userData.seed) * 0.02;
   });
 }
 
-function updatePetals(dt){
-  // Twinkle stars - no falling, just opacity pulse
-  const material = petalPoints.material;
-  if(material && material.opacity !== undefined){
-    material.opacity = 0.6 + Math.sin(walkTime * 0.8) * 0.3;
+function updateStars(dt){
+  if(starPoints && starPoints.material){
+    starPoints.material.opacity = 0.5 + Math.sin(walkTime * 0.7) * 0.4;
+    starPoints.rotation.y += dt * 0.003;
+    starPoints.position.x = camera.position.x;
+    starPoints.position.z = camera.position.z;
   }
-  // Slow rotation of whole starfield
-  petalPoints.rotation.y += dt * 0.005;
-  petalPoints.position.x = camera.position.x;
-  petalPoints.position.z = camera.position.z;
 }
 
 function updatePOIs(dt){
@@ -794,8 +699,6 @@ function updatePOIs(dt){
     const mesh = p.obj.userData.mesh;
     const seed = p.obj.userData.seed;
     mesh.position.y = p.obj.userData.baseY + Math.sin(walkTime*1.1 + seed)*0.08;
-    mesh.rotation.y += 0;
-    // billboard: siempre mirando a la cámara (solo eje Y)
     const dx = camera.position.x - mesh.position.x;
     const dz = camera.position.z - mesh.position.z;
     mesh.rotation.y = Math.atan2(dx, dz);
@@ -811,7 +714,7 @@ function updatePOIs(dt){
   const dAltar = Math.hypot(camera.position.x - LETTER_POS.x, camera.position.z - LETTER_POS.z);
   if(dAltar < closestDist){ closestDist = dAltar; closest = { type:'letter' }; }
 
-  const INTERACT_R = 3.4;
+  const INTERACT_R = 3.2;
   if(closestDist < INTERACT_R){
     nearestPOI = closest;
     showPrompt(closest);
@@ -822,7 +725,7 @@ function updatePOIs(dt){
 }
 
 // =====================================================================
-// HUD / interacción
+// HUD / INTERACCIÓN
 // =====================================================================
 function showPrompt(poi){
   promptEl.classList.add('show');
@@ -863,6 +766,7 @@ function openPhoto(p, idx){
   document.getElementById('photoWhy').textContent = p.why;
   document.getElementById('photoOverlay').classList.add('show');
 }
+
 function openLetter(){
   document.getElementById('letterOverlay').classList.add('show');
 }
@@ -883,7 +787,7 @@ document.getElementById('closeLetter').addEventListener('click', ()=>{
   document.getElementById('letterOverlay').classList.remove('show');
 });
 
-// menú (teletransporte)
+// Menú (teletransporte)
 const menuList = document.getElementById('menuList');
 const menuItems = [
   { label:'Mensaje inicial', go:()=>{ camera.position.set(0,1.6,6); yaw=0; pitch=0; } },
@@ -942,12 +846,16 @@ function updateJoy(e){
   moveVec = { x: dx/maxR, y: dy/maxR };
 }
 
-// mirar: arrastre en el resto de la pantalla
+// Mirar: arrastre en el resto de la pantalla
 let lookPointerId = null, lastX=0, lastY=0, downX=0, downY=0, moved=0;
 const gameContainer = document.getElementById('gameContainer');
 
 gameContainer.addEventListener('pointerdown', (e)=>{
   if(lookPointerId !== null) return;
+  // Ignorar si está sobre joystick o botones UI
+  const target = e.target.closest('#joyBase, #menuBtn, #musicBtn, #prompt');
+  if(target) return;
+  
   lookPointerId = e.pointerId;
   lastX = downX = e.clientX; lastY = downY = e.clientY; moved = 0;
 });
@@ -963,7 +871,7 @@ window.addEventListener('pointermove', (e)=>{
 window.addEventListener('pointerup', (e)=>{
   if(e.pointerId !== lookPointerId) return;
   lookPointerId = null;
-  if(moved < 10){ interactNearest(); }
+  if(moved < 12){ interactNearest(); }
 });
 
 // =====================================================================
@@ -995,35 +903,34 @@ function typeMessage(){
 }
 typeMessage();
 
+document.getElementById('enterBtn').addEventListener('click', ()=>{
+  document.getElementById('intro').classList.add('hide');
+  document.getElementById('hud').classList.add('show');
+});
+
 // =====================================================================
-// MUSIC PLAYER (ambient + Spotify link)
+// MÚSICA AMBIENTAL + SPOTIFY
 // =====================================================================
 let audioCtx = null;
 let ambientAudio = null;
 let isPlaying = false;
-const musicBtn = document.getElementById('musicBtn');
 
-function createAmbientAudio() {
+function createAmbientAudio(){
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   const gainNode = audioCtx.createGain();
-  gainNode.gain.value = 0.15;
+  gainNode.gain.value = 0.12;
   gainNode.connect(audioCtx.destination);
 
   const osc1 = audioCtx.createOscillator();
-  osc1.type = 'sine';
-  osc1.frequency.value = 220;
-  osc1.connect(gainNode);
+  osc1.type = 'sine'; osc1.frequency.value = 220; osc1.connect(gainNode);
 
   const osc2 = audioCtx.createOscillator();
-  osc2.type = 'sine';
-  osc2.frequency.value = 330;
-  osc2.connect(gainNode);
+  osc2.type = 'sine'; osc2.frequency.value = 330; osc2.connect(gainNode);
 
   const lfo = audioCtx.createOscillator();
-  lfo.type = 'sine';
-  lfo.frequency.value = 0.15;
+  lfo.type = 'sine'; lfo.frequency.value = 0.12;
   const lfoGain = audioCtx.createGain();
-  lfoGain.gain.value = 15;
+  lfoGain.gain.value = 12;
   lfo.connect(lfoGain);
   lfoGain.connect(osc1.frequency);
   lfoGain.connect(osc2.frequency);
@@ -1038,63 +945,73 @@ function createAmbientAudio() {
   return ambientAudio;
 }
 
-function startAmbient() {
-  if (!ambientAudio) createAmbientAudio();
-  if (ambientAudio.started) return;
+function startAmbient(){
+  if(!ambientAudio) createAmbientAudio();
+  if(ambientAudio.started) return;
   
-  if (audioCtx.state === 'suspended') audioCtx.resume();
+  if(audioCtx.state === 'suspended') audioCtx.resume();
   
   ambientAudio.osc1.start();
   ambientAudio.osc2.start();
   ambientAudio.lfo.start();
   ambientAudio.envGain.gain.setValueAtTime(0, audioCtx.currentTime);
-  ambientAudio.envGain.gain.linearRampToValueAtTime(0.08, audioCtx.currentTime + 8);
+  ambientAudio.envGain.gain.linearRampToValueAtTime(0.06, audioCtx.currentTime + 10);
   ambientAudio.started = true;
 }
 
-function stopAmbient() {
-  if (!ambientAudio || !ambientAudio.started) return;
+function stopAmbient(){
+  if(!ambientAudio || !ambientAudio.started) return;
   ambientAudio.envGain.gain.cancelScheduledValues(audioCtx.currentTime);
   ambientAudio.envGain.gain.setValueAtTime(ambientAudio.envGain.gain.value, audioCtx.currentTime);
-  ambientAudio.envGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 3);
+  ambientAudio.envGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 2);
   setTimeout(() => {
     ambientAudio.osc1.stop();
     ambientAudio.osc2.stop();
     ambientAudio.lfo.stop();
     ambientAudio.started = false;
-  }, 3500);
+  }, 2500);
 }
 
-function toggleMusic() {
-  isPlaying = !isPlaying;
-  musicBtn.classList.toggle('playing', isPlaying);
-  musicBtn.textContent = isPlaying ? '🎶' : '🎵';
-  musicBtn.title = isPlaying ? 'Pausar música ambiental' : 'Reproducir música ambiental';
-  
-  if (isPlaying) startAmbient();
-  else stopAmbient();
+// Music button handler
+const musicBtn = document.getElementById('musicBtn');
+if(musicBtn){
+  musicBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if(!isPlaying){
+      startAmbient();
+      musicBtn.classList.add('playing');
+      musicBtn.textContent = '🔊';
+      isPlaying = true;
+      showToast('🎵 Música ambiental activada');
+    }else{
+      stopAmbient();
+      musicBtn.classList.remove('playing');
+      musicBtn.textContent = '🎵';
+      isPlaying = false;
+      showToast('🔇 Música pausada');
+    }
+  });
+
+  // Long press for Spotify menu
+  let pressTimer = null;
+  musicBtn.addEventListener('pointerdown', (e) => {
+    pressTimer = setTimeout(() => {
+      if(isPlaying) showSpotifyMenu(e.clientX, e.clientY);
+    }, 600);
+  });
+  musicBtn.addEventListener('pointerup', () => clearTimeout(pressTimer));
+  musicBtn.addEventListener('pointerleave', () => clearTimeout(pressTimer));
 }
 
-// Long press on music button -> opens Spotify menu
-let musicPressTimer = null;
-musicBtn.addEventListener('pointerdown', () => {
-  musicPressTimer = setTimeout(() => {
-    showSpotifyMenu();
-  }, 600);
-});
-musicBtn.addEventListener('pointerup', () => clearTimeout(musicPressTimer));
-musicBtn.addEventListener('pointerleave', () => clearTimeout(musicPressTimer));
-musicBtn.addEventListener('click', (e) => {
-  if (!musicPressTimer) return;
-  clearTimeout(musicPressTimer);
-  musicPressTimer = null;
-  toggleMusic();
-});
+// Auto-resume audio context on first user interaction
+document.body.addEventListener('click', () => {
+  if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+}, { once: true });
 
-function showSpotifyMenu() {
+function showSpotifyMenu(x, y){
   const menu = document.createElement('div');
   menu.style.cssText = `
-    position:fixed; bottom:calc(5.5vh + 140px); right:14px; z-index:30;
+    position:fixed; left:${Math.min(x, window.innerWidth-220)}px; bottom:${Math.max(y, 140)}px; z-index:30;
     background:rgba(58,18,32,0.95); border:1px solid var(--gold); border-radius:8px;
     padding:12px; min-width:200px; box-shadow:0 8px 30px rgba(0,0,0,0.4);
     font-family:'Cormorant Garamond',serif; color:var(--cream);
@@ -1110,53 +1027,5 @@ function showSpotifyMenu() {
     <button onclick="this.parentElement.remove()" style="width:100%; padding:8px; background:none; border:none; color:var(--rosa-vieja); font-family:'Jost',sans-serif; font-size:0.8rem; text-transform:uppercase; letter-spacing:.1em; cursor:pointer;">Cerrar</button>
   `;
   document.body.appendChild(menu);
-  setTimeout(() => { if (menu.parentElement) menu.remove(); }, 15000);
+  setTimeout(() => { if(menu.parentElement) menu.remove(); }, 15000);
 }
-
-// Auto-resume audio context on first user interaction
-document.body.addEventListener('click', () => {
-  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-}, { once: true });
-
-// Music button
-if (musicBtn) {
-  musicBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    if (!isPlaying) {
-      startAmbient();
-      musicBtn.classList.add('playing');
-      musicBtn.textContent = '🔊';
-      isPlaying = true;
-      showToast('🎵 Música ambiental activada');
-    } else {
-      if (ambientAudio) {
-        ambientAudio.envGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.5);
-        setTimeout(() => {
-          ambientAudio.osc1.stop();
-          ambientAudio.osc2.stop();
-          ambientAudio.lfo.stop();
-          ambientAudio.started = false;
-        }, 500);
-      }
-      musicBtn.classList.remove('playing');
-      musicBtn.textContent = '🎵';
-      isPlaying = false;
-      showToast('🔇 Música pausada');
-    }
-  });
-  
-  // Long press for Spotify menu
-  let pressTimer = null;
-  musicBtn.addEventListener('pointerdown', (e) => {
-    pressTimer = setTimeout(() => {
-      if (isPlaying) showSpotifyMenu(e.clientX, e.clientY);
-    }, 600);
-  });
-  musicBtn.addEventListener('pointerup', () => clearTimeout(pressTimer));
-  musicBtn.addEventListener('pointerleave', () => clearTimeout(pressTimer));
-}
-
-document.getElementById('enterBtn').addEventListener('click', ()=>{
-  document.getElementById('intro').classList.add('hide');
-  document.getElementById('hud').classList.add('show');
-});
