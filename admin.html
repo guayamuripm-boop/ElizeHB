@@ -135,7 +135,7 @@
       <div class="upload-content">
         <span class="upload-icon">🎵</span>
         <span class="upload-text">Toca aquí o arrastra una o varias canciones</span>
-        <span class="upload-hint">MP3 128kbps, máx 8MB cada una · pocas y cortas: se descargan enteras en cada visita</span>
+        <span class="upload-hint">MP3 96-128kbps, máx 3MB cada una · pocas y cortas: se descargan enteras en cada visita</span>
       </div>
     </div>
     <div id="songsList" style="margin-top:12px;"></div>
@@ -443,8 +443,8 @@ function audioFileSelected(e){
 // mismo registro que se descarga entero en cada visita al jardín (fotos +
 // canciones juntas). Archivos grandes multiplican esa descarga para TODOS
 // los visitantes y pueden agotar la cuota gratuita de Supabase (nos pasó).
-const MAX_SONG_MB = 8;
-const WARN_TOTAL_SONGS_MB = 15;
+const MAX_SONG_MB = 3;
+const WARN_TOTAL_SONGS_MB = 6;
 function processAudio(file){
   // Algunos navegadores no rellenan file.type para audio -> también validamos por extensión
   const isAudioExt = /\.(mp3|m4a|wav|ogg|aac|flac|opus)$/i.test(file.name);
