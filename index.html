@@ -14,6 +14,9 @@ const SUPABASE_URL = 'https://vkvjjswnpitbroypjzta.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZrdmpqc3ducGl0YnJveXBqenRhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ0MjgxMDcsImV4cCI6MjEwMDAwNDEwN30.Uz7jMK99RgGPOEqCCKKD07Z7dFX9nlhQRRSry8g9-7M';
 const TABLE_NAME = 'jardin_content';
 const ROW_ID = 'main';
+
+// Create global supabase client
+window.supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 </script>
 <style>
   :root{

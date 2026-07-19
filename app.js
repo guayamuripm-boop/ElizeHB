@@ -40,7 +40,7 @@ const DEFAULTS = {
 
 async function loadFromSupabase() {
   try {
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const supabase = window.supabase;
     
     const { data, error } = await supabase
       .from(TABLE_NAME)
@@ -109,6 +109,7 @@ const COLORS = {
   skyDark:0x2a6ba8, skyMid:0x4a90d9, skyLight:0x7ec0f0, skyHorizon:0xc8e8ff,
   fogColor:0x7ec0f0,
   ground:0x3a5a2a, path:0x8d7a5a,
+  gold:0xb08d57,
   tulipRed:0xc41e3a, tulipPink:0xe8a8c8, tulipYellow:0xf0d840, tulipWhite:0xf5f0e8, tulipOrange:0xe87a2a,
   roseRed:0xb82030, rosePink:0xf0a8c8, roseWhite:0xfaf0f0, rosePeach:0xf5c8a8,
   gerberaRed:0xd01c1c, gerberaOrange:0xe87a2a, gerberaPink:0xf08ac8, gerberaYellow:0xf5d83a,
