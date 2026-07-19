@@ -483,26 +483,64 @@ function generateQR(){
   const url = 'https://elize-gamma.vercel.app';
   document.getElementById('qrUrl').textContent = url;
   
-  // Generate QR code
-  const qrDiv = document.getElementById('qrcode');
-  qrDiv.innerHTML = '';
-  new QRCode(qrDiv, {
+  // Generate QR code on offscreen canvas
+  const qrCanvas = document.createElement('canvas');
+  qrCanvas.width = 300;
+  qrCanvas.height = 300;
+  const qrCtx = qrCanvas.getContext('2d');
+  
+  new QRCode(qrCanvas, {
     text: url,
-    width: 256,
-    height: 256,
+    width: 300,
+    height: 300,
     colorDark: '#5C1A2B',
     colorLight: '#F7F0E6',
     correctLevel: QRCode.CorrectLevel.H
   });
+  
+  // Create heart-shaped canvas
+  const heartCanvas = document.createElement('canvas');
+  heartCanvas.width = 350;
+  heartCanvas.height = 350;
+  const hCtx = heartCanvas.getContext('2d');
+  
+  // Draw heart path
+  hCtx.beginPath();
+  const cx = 175, cy = 175, s = 120;
+  hCtx.moveTo(cx, cy + s * 0.55);
+  hCtx.bezierCurveTo(cx, cy + s * 0.95, cx - s * 0.9, cy + s * 0.95, cx - s * 0.9, cy + s * 0.2);
+  hCtx.bezierCurveTo(cx - s * 0.9, cy - s * 0.45, cx - s * 0.2, cy - s * 0.7, cx, cy - s * 0.35);
+  hCtx.bezierCurveTo(cx + s * 0.2, cy - s * 0.7, cx + s * 0.9, cy - s * 0.45, cx + s * 0.9, cy + s * 0.2);
+  hCtx.bezierCurveTo(cx + s * 0.9, cy + s * 0.95, cx, cy + s * 0.95, cx, cy + s * 0.55);
+  hCtx.closePath();
+  
+  // Clip to heart shape
+  hCtx.clip();
+  
+  // Draw QR centered in heart
+  const qrSize = 200;
+  hCtx.drawImage(qrCanvas, cx - qrSize/2, cy - qrSize/2 - 10, qrSize, qrSize);
+  
+  // Heart outline
+  hCtx.strokeStyle = '#5C1A2B';
+  hCtx.lineWidth = 4;
+  hCtx.stroke();
+  
+  // Display
+  const qrDiv = document.getElementById('qrcode');
+  qrDiv.innerHTML = '';
+  qrDiv.appendChild(heartCanvas);
+  
+  // Store for download
+  window.heartQRDataURL = heartCanvas.toDataURL('image/png');
 }
 
 function downloadQR(){
-  const canvas = document.querySelector('#qrcode canvas');
-  if(!canvas) return;
-  const link = document.createElement('a');
-  link.download = 'jardin-elize-qr.png';
-  link.href = canvas.toDataURL('image/png');
-  link.click();
+  if(!window.heartQRDataURL) return;
+  const a = document.createElement('a');
+  a.href = window.heartQRDataURL;
+  a.download = 'qr-jardin-corazon-vinotinto.png';
+  a.click();
 }
 
 // Init
