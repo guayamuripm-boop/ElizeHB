@@ -129,13 +129,13 @@
   <!-- Música: varias canciones + mini reproductor en el jardín -->
   <div class="card">
     <h2>🎵 Vuestras canciones</h2>
-    <p style="font-size:0.85rem; color:var(--rosa-vieja); margin-bottom:12px; font-style:italic;">Sube una o varias canciones (MP3). Sonarán de verdad dentro del jardín con un mini reproductor (anterior/pausa/siguiente) — los enlaces de Spotify de abajo NO suenan aquí, solo abren la app por fuera.</p>
+    <p style="font-size:0.85rem; color:var(--rosa-vieja); margin-bottom:12px; font-style:italic;">Sube 2-3 canciones favoritas (MP3 cortos). Sonarán de verdad dentro del jardín con un mini reproductor (anterior/pausa/siguiente) — los enlaces de Spotify de abajo NO suenan aquí, solo abren la app por fuera.</p>
     <div class="image-upload" id="audioUpload" onclick="document.getElementById('audioFile').click()" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropAudio(event)">
       <input type="file" id="audioFile" accept="audio/*" multiple onchange="audioFileSelected(event)" style="display:none">
       <div class="upload-content">
         <span class="upload-icon">🎵</span>
         <span class="upload-text">Toca aquí o arrastra una o varias canciones</span>
-        <span class="upload-hint">MP3/M4A/WAV, hasta 30MB cada una</span>
+        <span class="upload-hint">MP3 128kbps, máx 8MB cada una · pocas y cortas: se descargan enteras en cada visita</span>
       </div>
     </div>
     <div id="songsList" style="margin-top:12px;"></div>
@@ -439,13 +439,19 @@ function audioFileSelected(e){
   [...e.target.files].forEach(f => processAudio(f));
   e.target.value = ''; // permite volver a elegir el mismo archivo más tarde
 }
+// Límite bajo a propósito: cada canción viaja EMBEBIDA en base64 dentro del
+// mismo registro que se descarga entero en cada visita al jardín (fotos +
+// canciones juntas). Archivos grandes multiplican esa descarga para TODOS
+// los visitantes y pueden agotar la cuota gratuita de Supabase (nos pasó).
+const MAX_SONG_MB = 8;
+const WARN_TOTAL_SONGS_MB = 15;
 function processAudio(file){
   // Algunos navegadores no rellenan file.type para audio -> también validamos por extensión
   const isAudioExt = /\.(mp3|m4a|wav|ogg|aac|flac|opus)$/i.test(file.name);
   if(!file.type.startsWith('audio/') && !isAudioExt) return showMsg(`"${file.name}" no parece un audio válido`, 'error');
   const mb = (file.size / (1024*1024)).toFixed(1);
-  if(file.size > 30*1024*1024) return showMsg(`"${file.name}" pesa ${mb}MB (máx 30MB). Recórtala o expórtala en MP3 128kbps.`, 'error');
-  showMsg(`⏳ Subiendo "${file.name}"… (${mb}MB, puede tardar unos segundos)`);
+  if(file.size > MAX_SONG_MB*1024*1024) return showMsg(`"${file.name}" pesa ${mb}MB (máx ${MAX_SONG_MB}MB). Expórtala en MP3 128kbps o recórtala.`, 'error');
+  showMsg(`⏳ Subiendo "${file.name}"… (${mb}MB)`);
   const reader = new FileReader();
   reader.onload = e => {
     currentData.music = currentData.music || {};
@@ -453,9 +459,17 @@ function processAudio(file){
     currentData.music.songs.push({ name: file.name.replace(/\.[^.]+$/, ''), src: e.target.result });
     renderUI();
     showMsg(`✅ "${file.name}" añadida a la lista`);
+    warnIfSongsTooHeavy();
   };
   reader.onerror = () => showMsg(`❌ No se pudo leer "${file.name}"`, 'error');
   reader.readAsDataURL(file);
+}
+function warnIfSongsTooHeavy(){
+  const songs = (currentData.music && currentData.music.songs) || [];
+  const totalMB = songs.reduce((sum, s) => sum + (s.src.startsWith('data:') ? s.src.length*0.75/(1024*1024) : 0), 0);
+  if(totalMB > WARN_TOTAL_SONGS_MB){
+    showMsg(`⚠️ Llevas ~${totalMB.toFixed(0)}MB en canciones. Cada visita al jardín descarga TODAS de golpe — con 2-3 favoritas es más que suficiente y va más rápido y seguro.`, 'error');
+  }
 }
 function addSongByUrl(){
   const input = document.getElementById('audioUrlInput');

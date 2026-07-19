@@ -48,37 +48,60 @@ function migrateMusic(music){
   return music;
 }
 
+function mergeWithDefaults(content){
+  return { ...DEFAULTS, ...content,
+    photos: content.photos?.map((p, i) => ({ ...DEFAULTS.photos[i], ...p })) || DEFAULTS.photos,
+    letter: { ...DEFAULTS.letter, ...(content.letter || {}) },
+    music: migrateMusic({ ...DEFAULTS.music, ...(content.music || {}) })
+  };
+}
+
+// Caché local del contenido para no golpear Supabase en cada visita/recarga.
+// El jardín es una página de regalo, no un panel en vivo: el contenido casi
+// nunca cambia, así que reusar una copia reciente ahorra egress/consultas
+// (cada fetch trae TODAS las fotos+canciones en base64, varios MB de golpe).
+const CONTENT_CACHE_KEY = 'jardin_content_cache_v1';
+const CONTENT_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutos
+
+function readContentCache(){
+  try {
+    const raw = localStorage.getItem(CONTENT_CACHE_KEY);
+    return raw ? JSON.parse(raw) : null; // { content, ts }
+  } catch(e){ return null; }
+}
+function writeContentCache(content){
+  try { localStorage.setItem(CONTENT_CACHE_KEY, JSON.stringify({ content, ts: Date.now() })); }
+  catch(e){ /* localStorage lleno o bloqueado: no es crítico, seguimos sin caché */ }
+}
+
 async function loadFromSupabase() {
+  const cached = readContentCache();
+  if (cached && (Date.now() - cached.ts < CONTENT_CACHE_TTL_MS)) {
+    return mergeWithDefaults(cached.content);
+  }
+
   try {
     const supabase = window.supabaseClient;
-    
     const { data, error } = await supabase
       .from(TABLE_NAME)
       .select('*')
       .eq('id', ROW_ID)
       .single();
-    
+
     if (error && error.code !== 'PGRST116') throw error;
     if (data && data.content) {
-      return { ...DEFAULTS, ...data.content,
-        photos: data.content.photos?.map((p, i) => ({ ...DEFAULTS.photos[i], ...p })) || DEFAULTS.photos,
-        letter: { ...DEFAULTS.letter, ...(data.content.letter || {}) },
-        music: migrateMusic({ ...DEFAULTS.music, ...(data.content.music || {}) })
-      };
+      writeContentCache(data.content);
+      return mergeWithDefaults(data.content);
     }
   } catch (e) {
-    console.warn('Error cargando de Supabase, usando localStorage/DEFAULTS:', e);
-    // Fallback a localStorage
+    console.warn('Error cargando de Supabase, usando caché/localStorage/DEFAULTS:', e);
+    // Si Supabase falla (caído, cuota agotada...) usamos la última copia buena
+    // aunque esté vieja: mejor mostrar el jardín con datos algo desactualizados
+    // que dejarlo en blanco.
+    if (cached) return mergeWithDefaults(cached.content);
     try {
       const stored = localStorage.getItem('jardin_content');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        return { ...DEFAULTS, ...parsed,
-          photos: parsed.photos?.map((p, i) => ({ ...DEFAULTS.photos[i], ...p })) || DEFAULTS.photos,
-          letter: { ...DEFAULTS.letter, ...(parsed.letter || {}) },
-          music: migrateMusic({ ...DEFAULTS.music, ...(parsed.music || {}) })
-        };
-      }
+      if (stored) return mergeWithDefaults(JSON.parse(stored));
     } catch (e2) {
       console.warn('Error en fallback localStorage:', e2);
     }
