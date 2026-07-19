@@ -254,19 +254,28 @@ function escapeHtml(text){
 // ============================================================
 let currentData = DEFAULTS;
 
+// SOLO para la carga inicial de la página: trae datos del servidor y pinta.
+// NUNCA llamar a esto después de una edición local (borraría lo que no
+// se ha guardado aún). Para repintar tras editar, usar renderUI().
 async function render(){
   currentData = await loadFromSupabase();
-  
+  renderUI();
+}
+
+// Repinta la UI usando SOLO lo que ya está en memoria (currentData).
+// No toca el servidor -> seguro de llamar tras cualquier edición local
+// (subir foto, añadir línea, etc.) sin perder cambios no guardados.
+function renderUI(){
   // Nombres
   document.getElementById('herName').value = currentData.herName || '';
   document.getElementById('myName').value = currentData.myName || '';
-  
+
   // Mensaje inicial
   renderMessageLines(currentData.mensaje || DEFAULTS.mensaje);
-  
+
   // Fotos
   renderPhotos(currentData.photos || DEFAULTS.photos);
-  
+
   // Carta
   document.getElementById('letterGreeting').value = currentData.letter?.greeting || DEFAULTS.letter.greeting;
   renderLetterLines(currentData.letter?.paragraphs || DEFAULTS.letter.paragraphs);
@@ -377,7 +386,7 @@ function processImage(file, idx){
   showMsg('⏳ Optimizando imagen…');
   compressImage(file, 1280, 0.82).then(dataUrl => {
     currentData.photos[idx].image = dataUrl;
-    render();
+    renderUI();
     const kb = Math.round((dataUrl.length * 0.75) / 1024);
     showMsg(`✅ Imagen optimizada (~${kb} KB) y lista para guardar`);
   }).catch(() => showMsg('❌ No se pudo procesar la imagen', 'error'));
@@ -418,12 +427,12 @@ function compressImage(file, maxSize, quality){
 // ============================================================
 function addMessageLine(){
   currentData.mensaje.push("");
-  render();
+  renderUI();
 }
 
 function removeMessageLine(idx){
   currentData.mensaje.splice(idx, 1);
-  render();
+  renderUI();
 }
 
 function updateMessageLine(idx, val){
@@ -432,12 +441,12 @@ function updateMessageLine(idx, val){
 
 function addLetterLine(){
   currentData.letter.paragraphs.push("");
-  render();
+  renderUI();
 }
 
 function removeLetterLine(idx){
   currentData.letter.paragraphs.splice(idx, 1);
-  render();
+  renderUI();
 }
 
 function updateLetterLine(idx, val){
@@ -446,7 +455,7 @@ function updateLetterLine(idx, val){
 
 function updatePhoto(idx, field, val){
   currentData.photos[idx][field] = val;
-  if(field === 'image') render();
+  if(field === 'image') renderUI();
 }
 
 function addSpotifyLink(name = '', url = '') {
@@ -494,7 +503,7 @@ async function loadDefaults(){
   if(confirm('¿Restaurar todo al contenido por defecto? Se perderán tus cambios.')){
     currentData = { ...DEFAULTS };
     await saveToSupabase(currentData);
-    render();
+    renderUI();
     showMsg('Restaurado a valores por defecto');
   }
 }
@@ -503,7 +512,7 @@ async function clearAll(){
   if(confirm('¿Borrar TODO el contenido? Esta acción no se puede deshacer.')){
     currentData = { ...DEFAULTS, photos: DEFAULTS.photos.map(p=>({...p, image:""})), music: {links:[]} };
     await saveToSupabase(currentData);
-    render();
+    renderUI();
     showMsg('Contenido limpiado', 'error');
   }
 }
