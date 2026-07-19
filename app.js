@@ -172,30 +172,39 @@ function init3D(){
   skyCanvas.width = 512; skyCanvas.height = 256;
   const sctx = skyCanvas.getContext('2d');
   
-  // Degradado cielo
+  // Degradado cielo — ATARDECER DORADO (romántico, cálido, cinematográfico)
   const grad = sctx.createLinearGradient(0,0,0,256);
-  grad.addColorStop(0, '#1a4a8a');
-  grad.addColorStop(0.2, '#2a6ba8');
-  grad.addColorStop(0.5, '#4a90d9');
-  grad.addColorStop(0.8, '#7ec0f0');
-  grad.addColorStop(1, '#c8e8ff');
+  grad.addColorStop(0,    '#2b2350');  // cenit: violeta profundo
+  grad.addColorStop(0.32, '#5b3f6e');  // violeta suave
+  grad.addColorStop(0.58, '#a5537a');  // vino / rosa vieja
+  grad.addColorStop(0.80, '#e0906f');  // coral cálido
+  grad.addColorStop(1,    '#f7d9a8');  // horizonte dorado
   sctx.fillStyle = grad; sctx.fillRect(0,0,512,256);
-  
-  // Nubes procedurales
-  sctx.fillStyle = 'rgba(255,255,255,0.8)';
-  for(let i=0;i<12;i++){
+
+  // Resplandor del sol cerca del horizonte
+  const sunGlow = sctx.createRadialGradient(256, 232, 6, 256, 232, 150);
+  sunGlow.addColorStop(0, 'rgba(255,244,214,0.95)');
+  sunGlow.addColorStop(0.4, 'rgba(255,214,150,0.45)');
+  sunGlow.addColorStop(1, 'rgba(255,200,140,0)');
+  sctx.fillStyle = sunGlow; sctx.fillRect(0,120,512,136);
+
+  // Nubes cálidas teñidas por el ocaso
+  for(let i=0;i<10;i++){
     const cx = Math.random()*512;
-    const cy = Math.random()*120 + 20;
-    const w = 60 + Math.random()*80;
-    const h = 25 + Math.random()*20;
+    const cy = Math.random()*90 + 30;
+    const w = 60 + Math.random()*90;
+    const h = 20 + Math.random()*18;
+    const warm = cy > 110 ? 'rgba(255,214,180,0.55)' : 'rgba(240,220,235,0.35)';
+    sctx.fillStyle = warm;
     drawCloud(sctx, cx, cy, w, h);
   }
-  
+
   const skyTex = new THREE.CanvasTexture(skyCanvas);
+  skyTex.colorSpace = THREE.SRGBColorSpace;
   scene.background = skyTex;
 
-  // niebla con color del horizonte -> mezcla el suelo con el cielo sin cortes
-  scene.fog = new THREE.FogExp2(0x7ec0f0, 0.018);
+  // niebla cálida del color del horizonte -> el suelo se funde con el ocaso
+  scene.fog = new THREE.FogExp2(0xe8c49a, 0.021);
 
   // ---- cámara ----
   camera = new THREE.PerspectiveCamera(62, window.innerWidth/window.innerHeight, 0.1, 400);
@@ -213,25 +222,30 @@ function init3D(){
   renderer.setSize(window.innerWidth, window.innerHeight);
   document.getElementById('gameContainer').appendChild(renderer.domElement);
 
-  // ---- luces ----
-  scene.add(new THREE.AmbientLight(0xffffee, 0.7));
-  const dir = new THREE.DirectionalLight(0xfff8e8, 1.0);
-  dir.position.set(-25, 40, 15);
-  scene.add(dir);
+  // ---- luces (atardecer cálido) ----
+  scene.add(new THREE.HemisphereLight(0xffe3c0, 0x4a5a38, 0.7)); // cielo cálido / rebote verde del suelo
+  scene.add(new THREE.AmbientLight(0xffe8d5, 0.32));
+  const sun = new THREE.DirectionalLight(0xffce92, 1.2);          // sol dorado bajo, al fondo del camino
+  sun.position.set(-22, 16, -34);
+  scene.add(sun);
+  // relleno frío tenue desde atrás para dar volumen
+  const rim = new THREE.DirectionalLight(0x9fb0e0, 0.25);
+  rim.position.set(20, 10, 30);
+  scene.add(rim);
 
-  // ---- suelo ----
+  // ---- suelo con textura suave (no un color plano) ----
   const groundGeo = new THREE.PlaneGeometry(400, 400, 1, 1);
-  const groundMat = new THREE.MeshStandardMaterial({ color:0x3a5a2a, roughness:1 });
+  const groundMat = new THREE.MeshStandardMaterial({ map: createGroundTexture(), color:0x8a9a6a, roughness:1 });
   const ground = new THREE.Mesh(groundGeo, groundMat);
   ground.rotation.x = -Math.PI/2;
   scene.add(ground);
 
   // ---- camino sutil ----
-  const pathGeo = new THREE.PlaneGeometry(3.5, 80);
-  const pathMat = new THREE.MeshStandardMaterial({ color:0x8d7a5a, roughness:1, transparent:true, opacity:0.3 });
+  const pathGeo = new THREE.PlaneGeometry(3.2, 80);
+  const pathMat = new THREE.MeshStandardMaterial({ color:0xb89a72, roughness:1, transparent:true, opacity:0.35 });
   const path = new THREE.Mesh(pathGeo, pathMat);
   path.rotation.x = -Math.PI/2;
-  path.position.set(0, 0.01, -30);
+  path.position.set(0, 0.012, -30);
   scene.add(path);
 
   // ---- flores densas y realistas ----
@@ -278,217 +292,258 @@ function onResize(){
 }
 
 // =====================================================================
-// FLORES REALISTAS: Tulipanes, Rosas, Gerberas
+// FLORES: texturas dibujadas + InstancedMesh
+// Antes: ~1500 flores × 10-28 mallas = decenas de miles de draw calls (lentísimo).
+// Ahora: 3 InstancedMesh de flores + 1 de follaje = ~4 draw calls para TODO
+// el campo, con viento suave por shader. Rápido en móvil y más bonito.
 // =====================================================================
+let bloomMeshes = [], foliageMesh = null, flowerCount = 0;
+const windUniform = { value: 0 };
+
+function isMobileDevice(){
+  return /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || Math.min(window.innerWidth, window.innerHeight) < 820;
+}
+
+// Material de flor con tinte por-instancia + viento suave (GPU, gratis)
+function flowerMaterial(tex, foliage){
+  const mat = new THREE.MeshStandardMaterial({
+    map: tex, alphaTest: 0.42, transparent: false, side: THREE.DoubleSide,
+    roughness: 0.82, metalness: 0.0, color: 0xffffff
+  });
+  const amp = foliage ? 0.075 : 0.055;
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = windUniform;
+    shader.vertexShader = 'uniform float uTime;\n' + shader.vertexShader;
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <begin_vertex>',
+      `#include <begin_vertex>
+       #ifdef USE_INSTANCING
+         vec3 iP = instanceMatrix[3].xyz;
+         float h = uv.y;
+         float w = sin(uTime*1.15 + iP.x*0.45 + iP.z*0.32);
+         float w2 = sin(uTime*0.7 + iP.z*0.5);
+         transformed.x += (w*${amp.toFixed(3)} + w2*0.02) * h;
+         transformed.z += w*${(amp*0.4).toFixed(3)} * h;
+       #endif`
+    );
+  };
+  return mat;
+}
+
 function initFlowers(){
-  const tulipColors = [COLORS.tulipRed, COLORS.tulipPink, COLORS.tulipYellow, COLORS.tulipWhite, COLORS.tulipOrange];
-  const roseColors = [COLORS.roseRed, COLORS.rosePink, COLORS.roseWhite, COLORS.rosePeach];
-  const gerberaColors = [COLORS.gerberaRed, COLORS.gerberaOrange, COLORS.gerberaPink, COLORS.gerberaYellow];
-  
-  // Área: densa desde el inicio pero optimizada para móvil.
-  // (Antes: width 55 / spacing 1.15 = ~3170 flores → decenas de miles de mallas,
-  //  inviable en móviles. Ahora ~1500 flores manteniendo el look de campo denso.)
-  const areaWidth = 46;
-  const areaDepth = 80;
-  const spacing = 1.5;
-  
+  const defs = [
+    { tex: createTulipTexture(),   colors:[COLORS.tulipRed,COLORS.tulipPink,COLORS.tulipYellow,COLORS.tulipWhite,COLORS.tulipOrange], w:0.62 },
+    { tex: createRoseTexture(),    colors:[COLORS.roseRed,COLORS.rosePink,COLORS.roseWhite,COLORS.rosePeach],                         w:0.66 },
+    { tex: createGerberaTexture(), colors:[COLORS.gerberaRed,COLORS.gerberaOrange,COLORS.gerberaPink,COLORS.gerberaYellow],           w:0.66 },
+  ];
+
+  // Posiciones del campo (denso pero barato gracias al instancing)
+  const positions = [];
+  const areaWidth = 48, areaDepth = 84;
+  const spacing = isMobileDevice() ? 1.5 : 1.25;
   for(let z = 0; z > -areaDepth; z -= spacing){
     for(let x = -areaWidth/2; x < areaWidth/2; x += spacing){
-      const jitterX = (Math.random()-0.5) * 0.8;
-      const jitterZ = (Math.random()-0.5) * 0.8;
-      const fx = x + jitterX;
-      const fz = z + jitterZ;
-      
-      // Camino estrecho
-      if(Math.abs(fx) < 1.4) continue;
-      
-      const r = Math.random();
-      let isTulip = false, isRose = false, colors;
-      if(r < 0.34){
-        isTulip = true; colors = tulipColors;
-      }else if(r < 0.66){
-        isRose = true; colors = roseColors;
-      }else{
-        colors = gerberaColors;
+      const fx = x + (Math.random()-0.5) * 0.9;
+      const fz = z + (Math.random()-0.5) * 0.9;
+      if(Math.abs(fx) < 1.5) continue;           // camino central
+      positions.push({ x:fx, z:fz, s:0.7 + Math.random()*0.6, yaw:Math.random()*Math.PI*2, t:Math.floor(Math.random()*3) });
+    }
+  }
+  flowerCount = positions.length;
+
+  const byType = [[],[],[]];
+  positions.forEach(p => byType[p.t].push(p));
+
+  const dummy = new THREE.Object3D();
+  const col = new THREE.Color();
+
+  // BLOOMS: 2 quads cruzados por flor -> volumen desde cualquier ángulo
+  defs.forEach((def, ti) => {
+    const list = byType[ti];
+    if(!list.length) return;
+    const geo = new THREE.PlaneGeometry(def.w, def.w);
+    const inst = new THREE.InstancedMesh(geo, flowerMaterial(def.tex, false), list.length * 2);
+    let n = 0;
+    list.forEach(p => {
+      col.set(def.colors[Math.floor(Math.random()*def.colors.length)]);
+      for(let k = 0; k < 2; k++){
+        dummy.position.set(p.x, 0.72 * p.s, p.z);
+        dummy.rotation.set(0, p.yaw + k*Math.PI/2, 0);
+        dummy.scale.setScalar(p.s);
+        dummy.updateMatrix();
+        inst.setMatrixAt(n, dummy.matrix);
+        inst.setColorAt(n, col);
+        n++;
       }
-      const color = colors[Math.floor(Math.random()*colors.length)];
-      const scale = 0.75 + Math.random()*0.5;
-      
-      const f = createRealFlower(fx, fz, color, scale, isTulip, isRose);
-      scene.add(f);
-      flowerObjs.push(f);
-    }
-  }
-}
-
-function createRealFlower(x, z, colorHex, scale, isTulip, isRose){
-  const group = new THREE.Group();
-  
-  // Tallo con ligera curva
-  const stemCurve = new THREE.CatmullRomCurve3([
-    new THREE.Vector3(0, 0, 0),
-    new THREE.Vector3((Math.random()-0.5)*0.05, 0.35, 0),
-    new THREE.Vector3((Math.random()-0.5)*0.08, 0.7, 0),
-    new THREE.Vector3(0, 0.9, 0)
-  ]);
-  const stemGeo = new THREE.TubeGeometry(stemCurve, 8, 0.022, 4, false);
-  const stemMat = new THREE.MeshStandardMaterial({ color:COLORS.stem, roughness:0.9 });
-  const stem = new THREE.Mesh(stemGeo, stemMat);
-  group.add(stem);
-
-  const petalMat = new THREE.MeshStandardMaterial({ 
-    color:colorHex, emissive:colorHex, emissiveIntensity:0.1, 
-    roughness:0.35, metalness:0.05, side:THREE.DoubleSide 
-  });
-  const petalMatInner = new THREE.MeshStandardMaterial({ 
-    color:colorHex, emissive:colorHex, emissiveIntensity:0.12, 
-    roughness:0.3, metalness:0.05, side:THREE.DoubleSide 
+    });
+    inst.instanceMatrix.needsUpdate = true;
+    if(inst.instanceColor) inst.instanceColor.needsUpdate = true;
+    inst.frustumCulled = false;
+    scene.add(inst);
+    bloomMeshes.push(inst);
   });
 
-  if(isTulip){
-    // TULIPÁN: 6 pétalos en forma de copa (3 externos + 3 internos)
-    // Pétalos externos - más grandes, curvados hacia arriba
-    for(let i=0;i<3;i++){
-      const ang = (i/3)*Math.PI*2;
-      const petal = createTulipPetal(petalMat, true);
-      petal.position.set(Math.cos(ang)*0.12, 0.88, Math.sin(ang)*0.12);
-      petal.rotation.y = ang;
-      petal.rotation.x = -0.45;
-      petal.rotation.z = 0.15;
-      group.add(petal);
+  // FOLLAJE (tallo + hojas): un solo InstancedMesh verde para todas las flores
+  const fgeo = new THREE.PlaneGeometry(0.52, 0.95);
+  fgeo.translate(0, 0.475, 0);           // base en y=0
+  foliageMesh = new THREE.InstancedMesh(fgeo, flowerMaterial(createFoliageTexture(), true), positions.length * 2);
+  let m = 0;
+  positions.forEach(p => {
+    for(let k = 0; k < 2; k++){
+      dummy.position.set(p.x, 0, p.z);
+      dummy.rotation.set(0, p.yaw + k*Math.PI/2 + 0.35, 0);
+      dummy.scale.setScalar(p.s);
+      dummy.updateMatrix();
+      foliageMesh.setMatrixAt(m++, dummy.matrix);
     }
-    // Pétalos internos - más pequeños, más cerrados
-    for(let i=0;i<3;i++){
-      const ang = (i/3)*Math.PI*2 + Math.PI/3;
-      const petal = createTulipPetal(petalMatInner, false);
-      petal.position.set(Math.cos(ang)*0.07, 0.94, Math.sin(ang)*0.07);
-      petal.rotation.y = ang;
-      petal.rotation.x = -0.55;
-      petal.rotation.z = 0.1;
-      petal.scale.setScalar(0.75);
-      group.add(petal);
-    }
-    // Centro
-    const center = new THREE.Mesh(
-      new THREE.SphereGeometry(0.05, 8, 8),
-      new THREE.MeshStandardMaterial({ color:COLORS.center, roughness:0.3, metalness:0.2 })
-    );
-    center.position.y = 0.96;
-    group.add(center);
-    
-  }else if(isRose){
-    // ROSA: Pétalos en espiral (capas)
-    const petalGeo = createRosePetalGeometry();
-    
-    // Capa exterior (7 pétalos)
-    for(let i=0;i<7;i++){
-      const ang = (i/7)*Math.PI*2;
-      const petal = new THREE.Mesh(petalGeo, petalMat);
-      petal.position.set(Math.cos(ang)*0.18, 0.82, Math.sin(ang)*0.18);
-      petal.rotation.y = ang;
-      petal.rotation.x = -0.15;
-      petal.rotation.z = 0.12;
-      group.add(petal);
-    }
-    // Capa media (5 pétalos)
-    for(let i=0;i<5;i++){
-      const ang = (i/5)*Math.PI*2 + Math.PI/5;
-      const petal = new THREE.Mesh(petalGeo, petalMatInner);
-      petal.position.set(Math.cos(ang)*0.12, 0.88, Math.sin(ang)*0.12);
-      petal.rotation.y = ang;
-      petal.rotation.x = -0.25;
-      petal.rotation.z = 0.08;
-      petal.scale.setScalar(0.85);
-      group.add(petal);
-    }
-    // Capa interior - capullo (4 pétalos)
-    for(let i=0;i<4;i++){
-      const ang = (i/4)*Math.PI*2;
-      const petal = new THREE.Mesh(petalGeo, petalMatInner);
-      petal.position.set(Math.cos(ang)*0.06, 0.94, Math.sin(ang)*0.06);
-      petal.rotation.y = ang;
-      petal.rotation.x = -0.45;
-      petal.scale.setScalar(0.65);
-      group.add(petal);
-    }
-    // Centro
-    const center = new THREE.Mesh(
-      new THREE.SphereGeometry(0.04, 8, 8),
-      new THREE.MeshStandardMaterial({ color:COLORS.center, roughness:0.3, metalness:0.2 })
-    );
-    center.position.y = 0.96;
-    group.add(center);
-    
-  }else{
-    // GERBERA: 2 capas de pétalos planos
-    const petalGeo = createGerberaPetalGeometry();
-    
-    // Capa exterior (14 pétalos)
-    for(let i=0;i<14;i++){
-      const ang = (i/14)*Math.PI*2;
-      const petal = new THREE.Mesh(petalGeo, petalMat);
-      const radius = 0.2 + Math.sin(i*0.7)*0.02;
-      petal.position.set(Math.cos(ang)*radius, 0.85, Math.sin(ang)*radius);
-      petal.rotation.y = ang;
-      petal.rotation.x = -0.08;
-      group.add(petal);
-    }
-    // Capa interior (10 pétalos)
-    for(let i=0;i<10;i++){
-      const ang = (i/10)*Math.PI*2 + Math.PI/10;
-      const petal = new THREE.Mesh(petalGeo, petalMatInner);
-      petal.position.set(Math.cos(ang)*0.13, 0.89, Math.sin(ang)*0.13);
-      petal.rotation.y = ang;
-      petal.rotation.x = -0.03;
-      petal.scale.setScalar(0.8);
-      group.add(petal);
-    }
-    // Centro prominente
-    const center = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.1, 0.12, 0.05, 16),
-      new THREE.MeshStandardMaterial({ color:COLORS.center, roughness:0.3, metalness:0.15 })
-    );
-    center.position.y = 0.88;
-    group.add(center);
+  });
+  foliageMesh.instanceMatrix.needsUpdate = true;
+  foliageMesh.frustumCulled = false;
+  scene.add(foliageMesh);
+}
+
+// ---- Texturas de flores (canvas con alfa; en tonos claros para teñir por-instancia) ----
+function newFlowerCanvas(){ const c = document.createElement('canvas'); c.width = c.height = 256; return c; }
+
+function createTulipTexture(){
+  const c = newFlowerCanvas(); const ctx = c.getContext('2d');
+  const cx = 128;
+  function petal(baseX, ang, tall, shade){
+    ctx.save(); ctx.translate(baseX, 210); ctx.rotate(ang);
+    const g = ctx.createLinearGradient(0, 0, 0, -150*tall);
+    g.addColorStop(0,   `rgba(205,205,205,1)`);
+    g.addColorStop(0.4, `rgba(240,240,240,1)`);
+    g.addColorStop(1,   `rgba(255,255,255,1)`);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.bezierCurveTo(52, -34*tall, 44, -150*tall, 0, -158*tall);
+    ctx.bezierCurveTo(-44, -150*tall, -52, -34*tall, 0, 0);
+    ctx.closePath(); ctx.fill();
+    // vena central sutil
+    ctx.strokeStyle = 'rgba(180,180,180,0.5)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0,-8); ctx.lineTo(0,-150*tall); ctx.stroke();
+    ctx.restore();
   }
+  petal(cx-30, -0.26, 0.92, 1);   // externos
+  petal(cx+30,  0.26, 0.92, 1);
+  petal(cx,     0.00, 1.02, 1);   // central alto
+  petal(cx-14, -0.11, 0.80, 1);   // internos (copa cerrada)
+  petal(cx+14,  0.11, 0.80, 1);
+  return alphaTexture(c);
+}
 
-  // Hojas (2-3)
-  const leafCount = isRose ? 3 : 2;
-  for(let i=0;i<leafCount;i++){
-    const leaf = new THREE.Mesh(
-      new THREE.SphereGeometry(0.16, 6, 6),
-      new THREE.MeshStandardMaterial({ color:COLORS.leaf, roughness:0.9 })
-    );
-    leaf.scale.set(1, 0.16, 0.55);
-    const lang = (i/leafCount)*Math.PI*2;
-    leaf.position.set(Math.cos(lang)*0.14, 0.22, Math.sin(lang)*0.14);
-    leaf.rotation.z = 0.55 + Math.random()*0.2;
-    leaf.rotation.y = lang;
-    group.add(leaf);
+function createRoseTexture(){
+  const c = newFlowerCanvas(); const ctx = c.getContext('2d');
+  const cx = 128, cy = 120;
+  // capas de pétalos redondeados, de fuera (más oscuro) hacia dentro (más claro)
+  function ring(count, radius, petalR, rot, lo, hi){
+    for(let i=0;i<count;i++){
+      const a = rot + (i/count)*Math.PI*2;
+      const px = cx + Math.cos(a)*radius, py = cy + Math.sin(a)*radius;
+      const g = ctx.createRadialGradient(px, py, 1, px, py, petalR);
+      g.addColorStop(0, `rgba(${hi},${hi},${hi},1)`);
+      g.addColorStop(1, `rgba(${lo},${lo},${lo},1)`);
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(px, py, petalR, 0, Math.PI*2); ctx.fill();
+    }
   }
-
-  group.position.set(x, 0, z);
-  group.scale.setScalar(scale);
-  group.userData.seed = Math.random()*100;
-  return group;
+  ring(8, 66, 40, 0.0,   190, 235);   // exterior
+  ring(7, 46, 34, 0.4,   205, 245);
+  ring(5, 28, 27, 0.9,   220, 252);
+  ring(4, 14, 20, 0.2,   232, 255);   // capullo interno
+  // remolino central
+  ctx.strokeStyle = 'rgba(200,200,200,0.6)'; ctx.lineWidth = 3;
+  ctx.beginPath();
+  for(let t=0;t<10;t+=0.2){ const r=t*1.6; const x=cx+Math.cos(t)*r, y=cy+Math.sin(t)*r; t===0?ctx.moveTo(x,y):ctx.lineTo(x,y); }
+  ctx.stroke();
+  return alphaTexture(c);
 }
 
-function createTulipPetal(mat, isOuter){
-  const geo = new THREE.SphereGeometry(isOuter ? 0.14 : 0.1, 8, 8);
-  geo.scale(1, isOuter ? 0.3 : 0.25, isOuter ? 0.7 : 0.6);
-  return new THREE.Mesh(geo, mat);
+function createGerberaTexture(){
+  const c = newFlowerCanvas(); const ctx = c.getContext('2d');
+  const cx = 128, cy = 122;
+  // dos anillos de pétalos finos radiales
+  function petals(count, len, wid, r0, rot, lo, hi){
+    for(let i=0;i<count;i++){
+      const a = rot + (i/count)*Math.PI*2;
+      ctx.save(); ctx.translate(cx, cy); ctx.rotate(a);
+      const g = ctx.createLinearGradient(0, -r0, 0, -r0-len);
+      g.addColorStop(0, `rgba(${lo},${lo},${lo},1)`);
+      g.addColorStop(0.5, `rgba(${hi},${hi},${hi},1)`);
+      g.addColorStop(1, `rgba(255,255,255,1)`);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(0, -r0);
+      ctx.quadraticCurveTo(wid, -r0-len*0.5, 0, -r0-len);
+      ctx.quadraticCurveTo(-wid, -r0-len*0.5, 0, -r0);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+  }
+  petals(20, 78, 9, 30, 0.0,   210, 245);   // exterior
+  petals(16, 54, 8, 26, 0.16,  225, 252);   // interior
+  // centro
+  const g = ctx.createRadialGradient(cx, cy, 2, cx, cy, 30);
+  g.addColorStop(0, 'rgba(120,120,120,1)');
+  g.addColorStop(0.6, 'rgba(90,90,90,1)');
+  g.addColorStop(1, 'rgba(150,150,150,1)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, 30, 0, Math.PI*2); ctx.fill();
+  // puntitos del disco
+  ctx.fillStyle = 'rgba(60,60,60,0.8)';
+  for(let i=0;i<40;i++){ const a=Math.random()*Math.PI*2, r=Math.random()*24; ctx.beginPath(); ctx.arc(cx+Math.cos(a)*r, cy+Math.sin(a)*r, 1.6, 0, Math.PI*2); ctx.fill(); }
+  return alphaTexture(c);
 }
 
-function createRosePetalGeometry(){
-  const geo = new THREE.SphereGeometry(0.11, 6, 6);
-  geo.scale(1, 0.18, 0.75);
-  return geo;
+function createFoliageTexture(){
+  const c = document.createElement('canvas'); c.width = 128; c.height = 256;
+  const ctx = c.getContext('2d');
+  // tallo
+  const sg = ctx.createLinearGradient(58,0,70,0);
+  sg.addColorStop(0,'#5f7f45'); sg.addColorStop(0.5,'#8fae63'); sg.addColorStop(1,'#5f7f45');
+  ctx.fillStyle = sg;
+  ctx.beginPath(); ctx.moveTo(60,256); ctx.lineTo(68,256); ctx.lineTo(66,20); ctx.lineTo(62,20); ctx.closePath(); ctx.fill();
+  // hojas
+  function leaf(y, dir, len){
+    ctx.save(); ctx.translate(64, y); ctx.scale(dir,1); ctx.rotate(-0.5);
+    const g = ctx.createLinearGradient(0,0,len,-len*0.4);
+    g.addColorStop(0,'#4f7239'); g.addColorStop(0.6,'#7ea15a'); g.addColorStop(1,'#5f8347');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.moveTo(0,0);
+    ctx.quadraticCurveTo(len*0.6,-len*0.35, len,-len*0.15);
+    ctx.quadraticCurveTo(len*0.55,-len*0.05, 0,6);
+    ctx.closePath(); ctx.fill(); ctx.restore();
+  }
+  leaf(150, 1, 54); leaf(180, -1, 46); leaf(120, -1, 40);
+  return alphaTexture(c);
 }
 
-function createGerberaPetalGeometry(){
-  const geo = new THREE.SphereGeometry(0.09, 5, 5);
-  geo.scale(1, 0.12, 0.8);
-  return geo;
+function alphaTexture(canvas){
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
+}
+
+function createGroundTexture(){
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const x = c.getContext('2d');
+  x.fillStyle = '#43552f'; x.fillRect(0,0,256,256);
+  // manchas suaves de césped (tonos de verde + toques cálidos del ocaso)
+  for(let i=0;i<900;i++){
+    const g = 45 + Math.random()*55;
+    const warm = Math.random() < 0.15;
+    x.fillStyle = warm
+      ? `rgba(${150+Math.random()*40|0},${120+Math.random()*30|0},${70|0},0.18)`
+      : `rgba(${g*0.55|0},${g|0},${g*0.45|0},0.28)`;
+    const r = 2 + Math.random()*9;
+    x.beginPath(); x.arc(Math.random()*256, Math.random()*256, r, 0, Math.PI*2); x.fill();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(60, 60);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
 }
 
 function createDust(){
@@ -717,12 +772,11 @@ function optimizeForLowPerformance(){
   performanceOptimized = true;
   if(dustPoints){
     scene.remove(dustPoints);
-    dustPoints = createDust(); // Reduce count internally
+    dustPoints = createDust(); // menos partículas
     scene.add(dustPoints);
   }
-  // Oculta la mitad de las flores para aliviar dispositivos lentos (sigue viéndose denso)
-  flowerObjs.forEach((f, i) => { if(i % 2 === 0) f.visible = false; });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+  renderer.setPixelRatio(1);              // baja resolución de render
+  if(scene.fog) scene.fog.density = 0.03; // niebla más cercana = menos que dibujar
   console.warn('⚠️ Optimizando performance para dispositivo lento');
 }
 
@@ -750,10 +804,8 @@ function updateMovement(dt){
 function clamp(v,min,max){ return Math.max(min, Math.min(max,v)); }
 
 function updateFlowers(){
-  const t = walkTime;
-  flowerObjs.forEach(f => {
-    f.rotation.z = Math.sin(t*0.5 + f.userData.seed) * 0.02;
-  });
+  // Viento por shader: solo hay que avanzar el tiempo (coste ~0)
+  windUniform.value = walkTime;
 }
 
 function updateStars(dt){

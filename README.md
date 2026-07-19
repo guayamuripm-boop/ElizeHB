@@ -83,8 +83,12 @@ ALTER TABLE public.jardin_content ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "public read" ON public.jardin_content
   FOR SELECT USING (true);
 
-CREATE POLICY "service write" ON public.jardin_content
-  FOR ALL USING (auth.role() = 'service_role');
+-- El admin usa la anon key, así que anon debe poder escribir (insert + update).
+-- (Antes había una policy "service write" que exigía service_role → daba 401 al guardar.)
+CREATE POLICY "anon insert" ON public.jardin_content
+  FOR INSERT TO anon WITH CHECK (true);
+CREATE POLICY "anon update" ON public.jardin_content
+  FOR UPDATE TO anon USING (true) WITH CHECK (true);
 
 INSERT INTO public.jardin_content (id, content) VALUES ('1', '{}')
 ON CONFLICT (id) DO NOTHING;
@@ -133,7 +137,7 @@ ON CONFLICT (id) DO NOTHING;
 ## 🚀 Deploy & Workflow
 
 ### Auto-Deploy (GitHub → Vercel)
-1. Push a `main` → Vercel detecta → Build estático → Deploy
+1. Push a `master` → Vercel detecta → Build estático → Deploy
 2. URL fija: **https://elize-gamma.vercel.app**
 
 ### Para editar contenido (tú)
