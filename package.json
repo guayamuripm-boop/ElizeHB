@@ -6,7 +6,16 @@
     "dev": "npx serve . -p 3000",
     "start": "npx serve . -p 8080"
   },
-  "keywords": ["threejs", "birthday", "gift", "3d-garden"],
+  "keywords": [
+    "threejs",
+    "birthday",
+    "gift",
+    "3d-garden"
+  ],
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "canvas": "^3.2.3",
+    "qrcode": "^1.5.4"
+  }
 }

@@ -6,6 +6,10 @@
 <title>Admin - Nuestro Jardín</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Jost:wght@300;400;500&family=Parisienne&display=swap" rel="stylesheet">
+<!-- Supabase Client -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- QRCode for generating heart QR -->
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <style>
   :root{
     --vino:#5C1A2B; --vino-dark:#3A1220; --beige:#EDE3D3; --rosa-vieja:#C99DA3;
@@ -56,12 +60,19 @@
   .upload-text{font-family:'Cormorant Garamond',serif;color:var(--vino-dark);font-size:1.1rem}
   .upload-hint{font-size:0.75rem;color:var(--rosa-vieja)}
   .image-upload .image-preview{margin-top:12px;max-height:120px}
+  
+  /* QR Code section */
+  .qr-section{text-align:center;padding:20px;background:linear-gradient(135deg,var(--vino),var(--vino-dark));border-radius:12px;color:var(--cream);margin-top:20px}
+  .qr-section h3{font-family:'Parisienne',cursive;font-size:1.8rem;margin-bottom:10px;color:var(--gold)}
+  .qr-section p{font-family:'Cormorant Garamond',serif;font-style:italic;margin-bottom:15px;opacity:0.9}
+  #qrcode{display:inline-block;margin:10px auto}
+  .qr-url{font-size:0.8rem;opacity:0.7;word-break:break-all;margin-top:10px}
 </style>
 </head>
 <body>
 <div class="container">
   <h1>Nuestro Jardín</h1>
-  <p class="subtitle">Panel de edición de contenido</p>
+  <p class="subtitle">Panel de edición de contenido (Supabase)</p>
 
   <div id="msg"></div>
 
@@ -109,7 +120,7 @@
     </div>
   </div>
 
-<!-- Música & Spotify -->
+  <!-- Música & Spotify -->
   <div class="card">
     <h2>🎵 Música & Spotify</h2>
     <p style="font-size:0.85rem; color:var(--rosa-vieja); margin-bottom:12px; font-style:italic;">Configura los enlaces a vuestras canciones especiales. Mantén pulsado el botón 🎵 en el jardín para verlos.</p>
@@ -118,16 +129,39 @@
   </div>
 
   <div class="btn-row">
-    <button class="btn btn-primary" onclick="saveAll()">💾 Guardar todo</button>
+    <button class="btn btn-primary" onclick="saveAll()">💾 Guardar todo en Supabase</button>
     <button class="btn btn-secondary" onclick="loadDefaults()">↩️ Restaurar defecto</button>
     <button class="btn btn-danger" onclick="clearAll()">🗑️ Limpiar todo</button>
   </div>
 
   <a href="index.html" class="preview-link" target="_blank">🌿 Ver jardín en vivo</a>
+
+  <!-- QR Code Generator -->
+  <div class="qr-section">
+    <h3>📱 QR para el regalo</h3>
+    <p>Escanea o descarga para imprimir en la tarjeta</p>
+    <div id="qrcode"></div>
+    <div class="qr-url" id="qrUrl"></div>
+    <button class="btn btn-primary" onclick="downloadQR()" style="margin-top:15px;padding:10px 20px;font-size:0.9rem;">📥 Descargar QR (PNG)</button>
+  </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script>
-// Configuración por defecto
+// ============================================================
+// SUPABASE CONFIG - REEMPLAZA CON TUS CREDENCIALES
+// ============================================================
+const SUPABASE_URL = 'https://vkvjjswnpitbroypjzta.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZrdmpqc3du cGl0YnJveXBqenRhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ0MjgxMDcsImV4cCI6MjEwMDAwNDEwN30.Uz7jMK99RgGPOEqCCKKD07Z7dFX9nlhQRRSry8g9-7M';
+const TABLE_NAME = 'jardin_content';
+const ROW_ID = 'main';
+
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ============================================================
+// DEFAULTS (fallback si no hay datos en Supabase)
+// ============================================================
 const DEFAULTS = {
   herName: "Elize",
   myName: "",
@@ -138,14 +172,14 @@ const DEFAULTS = {
     "Camina, explóralos… y al final, encontrarás algo más. 💕"
   ],
   photos: [
-    { label:"Foto 1", caption:"Nuestro primer recuerdo", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:-9, z:-12, image:"" },
-    { label:"Foto 2", caption:"Ese día tan especial", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:11, z:-24, image:"" },
-    { label:"Foto 3", caption:"Mi lugar favorito: contigo", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:-13, z:-38, image:"" },
-    { label:"Foto 4", caption:"Nuestra aventura favorita", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:7, z:-50, image:"" },
-    { label:"Foto 5", caption:"Aquella tarde de risas", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:-5, z:-62, image:"" },
-    { label:"Foto 6", caption:"Tu sonrisa al despertar", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:14, z:-74, image:"" },
-    { label:"Foto 7", caption:"El atardecer que compartimos", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:-11, z:-86, image:"" },
-    { label:"Foto 8", caption:"Nuestro último viaje juntos", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:3, z:-98, image:"" }
+    { label:"Foto 1", caption:"Nuestro primer recuerdo", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:-5,  z:-8, image:"" },
+    { label:"Foto 2", caption:"Ese día tan especial", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:6,  z:-15, image:"" },
+    { label:"Foto 3", caption:"Mi lugar favorito: contigo", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:-8, z:-23, image:"" },
+    { label:"Foto 4", caption:"Nuestra aventura favorita", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:4,   z:-31, image:"" },
+    { label:"Foto 5", caption:"Aquella tarde de risas", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:-3,  z:-39, image:"" },
+    { label:"Foto 6", caption:"Tu sonrisa al despertar", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:7,  z:-47, image:"" },
+    { label:"Foto 7", caption:"El atardecer que compartimos", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:-6,  z:-55, image:"" },
+    { label:"Foto 8", caption:"Nuestro último viaje juntos", why:"Escribe aquí por qué esta foto es importante para ustedes.", x:1,   z:-63, image:"" }
   ],
   letter: {
     greeting: "Querida Elize,",
@@ -165,45 +199,83 @@ const DEFAULTS = {
   }
 };
 
-// Utilidades
+// ============================================================
+// SUPABASE HELPERS
+// ============================================================
+async function loadFromSupabase() {
+  try {
+    const { data, error } = await supabase
+      .from(TABLE_NAME)
+      .select('*')
+      .eq('id', ROW_ID)
+      .single();
+    
+    if (error && error.code !== 'PGRST116') throw error;
+    if (data && data.content) {
+      return { ...DEFAULTS, ...data.content,
+        photos: data.content.photos?.map((p, i) => ({ ...DEFAULTS.photos[i], ...p })) || DEFAULTS.photos,
+        letter: { ...DEFAULTS.letter, ...(data.content.letter || {}) },
+        music: { ...DEFAULTS.music, ...(data.content.music || {}) }
+      };
+    }
+  } catch (e) {
+    console.warn('Error cargando de Supabase:', e);
+  }
+  return DEFAULTS;
+}
+
+async function saveToSupabase(content) {
+  const { error } = await supabase
+    .from(TABLE_NAME)
+    .upsert({ id: ROW_ID, content, updated_at: new Date().toISOString() });
+  
+  if (error) throw error;
+  return true;
+}
+
+// ============================================================
+// UTILIDADES
+// ============================================================
 function showMsg(text, type='success'){
   const el = document.getElementById('msg');
   el.innerHTML = `<div class="msg ${type}">${text}</div>`;
   setTimeout(()=>el.innerHTML='', 3000);
 }
 
-function getData(){
-  try{
-    const stored = localStorage.getItem('jardin_content');
-    return stored ? JSON.parse(stored) : DEFAULTS;
-  }catch{ return DEFAULTS; }
+function escapeHtml(text){
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }
 
-function setData(data){
-  localStorage.setItem('jardin_content', JSON.stringify(data));
-}
+// ============================================================
+// RENDERIZADO
+// ============================================================
+let currentData = DEFAULTS;
 
-// Renderizado
-function render(){
-  const data = getData();
+async function render(){
+  currentData = await loadFromSupabase();
   
   // Nombres
-  document.getElementById('herName').value = data.herName || '';
-  document.getElementById('myName').value = data.myName || '';
+  document.getElementById('herName').value = currentData.herName || '';
+  document.getElementById('myName').value = currentData.myName || '';
   
   // Mensaje inicial
-  renderMessageLines(data.mensaje || DEFAULTS.mensaje);
+  renderMessageLines(currentData.mensaje || DEFAULTS.mensaje);
   
   // Fotos
-  renderPhotos(data.photos || DEFAULTS.photos);
+  renderPhotos(currentData.photos || DEFAULTS.photos);
   
   // Carta
-  document.getElementById('letterGreeting').value = data.letter?.greeting || DEFAULTS.letter.greeting;
-  renderLetterLines(data.letter?.paragraphs || DEFAULTS.letter.paragraphs);
-  document.getElementById('letterSignature').value = data.letter?.signature || DEFAULTS.letter.signature;
+  document.getElementById('letterGreeting').value = currentData.letter?.greeting || DEFAULTS.letter.greeting;
+  renderLetterLines(currentData.letter?.paragraphs || DEFAULTS.letter.paragraphs);
+  document.getElementById('letterSignature').value = currentData.letter?.signature || DEFAULTS.letter.signature;
 
   // Música
-  renderMusic(data.music || DEFAULTS.music);
+  renderMusic(currentData.music?.links || DEFAULTS.music.links);
+
+  // Generar QR
+  generateQR();
 }
 
 function renderMessageLines(lines){
@@ -213,12 +285,9 @@ function renderMessageLines(lines){
     const div = document.createElement('div');
     div.className = 'message-line';
     div.innerHTML = `
-      <input type="text" value="${escapeHtml(line)}" data-idx="${i}" onchange="updateMessageLine(${this.value}, ${i})" placeholder="Línea ${i+1}">
+      <input type="text" value="${escapeHtml(line)}" placeholder="Línea ${i+1}" onchange="updateMessageLine(${i}, this.value)">
       <button class="remove-line" onclick="removeMessageLine(${i})">✕</button>
     `;
-    // Fix: use proper event handler
-    const input = div.querySelector('input');
-    input.onchange = (e) => updateMessageLine(e.target.value, i);
     container.appendChild(div);
   });
 }
@@ -230,22 +299,10 @@ function renderLetterLines(lines){
     const div = document.createElement('div');
     div.className = 'message-line';
     div.innerHTML = `
-      <textarea data-idx="${i}" placeholder="Párrafo ${i+1}">${escapeHtml(line)}</textarea>
+      <textarea placeholder="Párrafo ${i+1}" onchange="updateLetterLine(${i}, this.value)">${escapeHtml(line)}</textarea>
       <button class="remove-line" onclick="removeLetterLine(${i})">✕</button>
     `;
-    const textarea = div.querySelector('textarea');
-    textarea.onchange = (e) => updateLetterLine(e.target.value, i);
     container.appendChild(div);
-  });
-}
-
-function renderMusic(links){
-  const fields = ['musicName1','musicUrl1','musicName2','musicUrl2','musicName3','musicUrl3','musicName4','musicUrl4'];
-  links.forEach((link, i) => {
-    const nameEl = document.getElementById(fields[i*2]);
-    const urlEl = document.getElementById(fields[i*2+1]);
-    if (nameEl) nameEl.value = link.name || '';
-    if (urlEl) urlEl.value = link.url || '';
   });
 }
 
@@ -291,7 +348,15 @@ function renderPhotos(photos){
   });
 }
 
-// Image upload handlers
+function renderMusic(links){
+  const container = document.getElementById('spotifyLinks');
+  container.innerHTML = '';
+  links.forEach(l => addSpotifyLink(l.name, l.url));
+}
+
+// ============================================================
+// IMAGE UPLOAD HANDLERS
+// ============================================================
 function dragOver(e){ e.preventDefault(); e.currentTarget.classList.add('drag-over'); }
 function dragLeave(e){ e.currentTarget.classList.remove('drag-over'); }
 function dropImage(e, idx){
@@ -309,83 +374,47 @@ function processImage(file, idx){
   if(file.size > 2*1024*1024) return showMsg('Máx 2MB', 'error');
   const reader = new FileReader();
   reader.onload = e => {
-    const data = getData();
-    data.photos[idx].image = e.target.result; // base64
-    setData(data);
+    currentData.photos[idx].image = e.target.result;
     render();
     showMsg('✅ Imagen guardada');
   };
   reader.readAsDataURL(file);
 }
 
-// Handlers
+// ============================================================
+// HANDLERS
+// ============================================================
 function addMessageLine(){
-  const data = getData();
-  data.mensaje.push("");
-  setData(data);
+  currentData.mensaje.push("");
   render();
 }
 
 function removeMessageLine(idx){
-  const data = getData();
-  data.mensaje.splice(idx, 1);
-  setData(data);
+  currentData.mensaje.splice(idx, 1);
   render();
 }
 
-function updateMessageLine(val, idx){
-  const data = getData();
-  data.mensaje[idx] = val;
-  setData(data);
+function updateMessageLine(idx, val){
+  currentData.mensaje[idx] = val;
 }
 
 function addLetterLine(){
-  const data = getData();
-  data.letter.paragraphs.push("");
-  setData(data);
+  currentData.letter.paragraphs.push("");
   render();
 }
 
 function removeLetterLine(idx){
-  const data = getData();
-  data.letter.paragraphs.splice(idx, 1);
-  setData(data);
+  currentData.letter.paragraphs.splice(idx, 1);
   render();
 }
 
-function updateLetterLine(val, idx){
-  const data = getData();
-  data.letter.paragraphs[idx] = val;
-  setData(data);
+function updateLetterLine(idx, val){
+  currentData.letter.paragraphs[idx] = val;
 }
 
 function updatePhoto(idx, field, val){
-  const data = getData();
-  data.photos[idx][field] = val;
-  setData(data);
-  if(field === 'image') render(); // re-render para preview
-}
-
-function saveAll(){
-  const data = getData();
-  data.herName = document.getElementById('herName').value;
-  data.myName = document.getElementById('myName').value;
-  data.letter.greeting = document.getElementById('letterGreeting').value;
-  data.letter.signature = document.getElementById('letterSignature').value;
-  
-  // Save music links
-  data.music = { links: [] };
-  document.querySelectorAll('#spotifyLinks .message-line').forEach(line => {
-    const inputs = line.querySelectorAll('input');
-    if (inputs.length >= 2) {
-      const name = inputs[0].value.trim();
-      const url = inputs[1].value.trim();
-      if (name || url) data.music.links.push({ name, url });
-    }
-  });
-  
-  setData(data);
-  showMsg('✅ Guardado correctamente. Abre "Ver jardín en vivo" para ver los cambios.');
+  currentData.photos[idx][field] = val;
+  if(field === 'image') render();
 }
 
 function addSpotifyLink(name = '', url = '') {
@@ -404,21 +433,80 @@ function renderSpotifyLinks() {
   // Just triggers re-render on next save
 }
 
-function renderSpotifyLinksOnLoad() {
-  const data = getData();
-  const links = data.music?.links || [];
-  links.forEach(l => addSpotifyLink(l.name, l.url));
+async function saveAll(){
+  // Collect music links
+  currentData.music = { links: [] };
+  document.querySelectorAll('#spotifyLinks .message-line').forEach(line => {
+    const inputs = line.querySelectorAll('input');
+    if (inputs.length >= 2) {
+      const name = inputs[0].value.trim();
+      const url = inputs[1].value.trim();
+      if (name || url) currentData.music.links.push({ name, url });
+    }
+  });
+  
+  currentData.herName = document.getElementById('herName').value;
+  currentData.myName = document.getElementById('myName').value;
+  currentData.letter.greeting = document.getElementById('letterGreeting').value;
+  currentData.letter.signature = document.getElementById('letterSignature').value;
+  
+  try {
+    await saveToSupabase(currentData);
+    showMsg('✅ Guardado en Supabase. Abre "Ver jardín en vivo" para ver los cambios.');
+  } catch (e) {
+    showMsg('❌ Error: ' + e.message, 'error');
+  }
 }
 
-function escapeHtml(text){
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
+async function loadDefaults(){
+  if(confirm('¿Restaurar todo al contenido por defecto? Se perderán tus cambios.')){
+    currentData = { ...DEFAULTS };
+    await saveToSupabase(currentData);
+    render();
+    showMsg('Restaurado a valores por defecto');
+  }
+}
+
+async function clearAll(){
+  if(confirm('¿Borrar TODO el contenido? Esta acción no se puede deshacer.')){
+    currentData = { ...DEFAULTS, photos: DEFAULTS.photos.map(p=>({...p, image:""})), music: {links:[]} };
+    await saveToSupabase(currentData);
+    render();
+    showMsg('Contenido limpiado', 'error');
+  }
+}
+
+// ============================================================
+// QR CODE GENERATOR (HEART SHAPED, VINO COLOR)
+// ============================================================
+function generateQR(){
+  const url = 'https://elize-gamma.vercel.app';
+  document.getElementById('qrUrl').textContent = url;
+  
+  // Generate QR code
+  const qrDiv = document.getElementById('qrcode');
+  qrDiv.innerHTML = '';
+  new QRCode(qrDiv, {
+    text: url,
+    width: 256,
+    height: 256,
+    colorDark: '#5C1A2B',
+    colorLight: '#F7F0E6',
+    correctLevel: QRCode.CorrectLevel.H
+  });
+}
+
+function downloadQR(){
+  const canvas = document.querySelector('#qrcode canvas');
+  if(!canvas) return;
+  const link = document.createElement('a');
+  link.download = 'jardin-elize-qr.png';
+  link.href = canvas.toDataURL('image/png');
+  link.click();
 }
 
 // Init
 render();
-renderSpotifyLinksOnLoad();
 </script>
 </body>
 </html>

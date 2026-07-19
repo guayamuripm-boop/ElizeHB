@@ -1,5 +1,5 @@
 // =====================================================================
-// JARDÍN 3D — configuración de contenido (se carga desde localStorage / admin.html)
+// JARDÍN 3D — configuración de contenido (se carga desde Supabase)
 // =====================================================================
 const DEFAULTS = {
   herName: "Elize",
@@ -38,33 +38,69 @@ const DEFAULTS = {
   }
 };
 
-function loadContent() {
+async function loadFromSupabase() {
   try {
-    const stored = localStorage.getItem('jardin_content');
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      return { ...DEFAULTS, ...parsed, 
-        photos: parsed.photos?.map((p, i) => ({ ...DEFAULTS.photos[i], ...p })) || DEFAULTS.photos,
-        letter: { ...DEFAULTS.letter, ...(parsed.letter || {}) },
-        music: { ...DEFAULTS.music, ...(parsed.music || {}) }
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    
+    const { data, error } = await supabase
+      .from(TABLE_NAME)
+      .select('*')
+      .eq('id', ROW_ID)
+      .single();
+    
+    if (error && error.code !== 'PGRST116') throw error;
+    if (data && data.content) {
+      return { ...DEFAULTS, ...data.content,
+        photos: data.content.photos?.map((p, i) => ({ ...DEFAULTS.photos[i], ...p })) || DEFAULTS.photos,
+        letter: { ...DEFAULTS.letter, ...(data.content.letter || {}) },
+        music: { ...DEFAULTS.music, ...(data.content.music || {}) }
       };
     }
   } catch (e) {
-    console.warn('Error cargando contenido:', e);
+    console.warn('Error cargando de Supabase, usando localStorage/DEFAULTS:', e);
+    // Fallback a localStorage
+    try {
+      const stored = localStorage.getItem('jardin_content');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        return { ...DEFAULTS, ...parsed, 
+          photos: parsed.photos?.map((p, i) => ({ ...DEFAULTS.photos[i], ...p })) || DEFAULTS.photos,
+          letter: { ...DEFAULTS.letter, ...(parsed.letter || {}) },
+          music: { ...DEFAULTS.music, ...(parsed.music || {}) }
+        };
+      }
+    } catch (e2) {
+      console.warn('Error en fallback localStorage:', e2);
+    }
   }
   return DEFAULTS;
 }
 
-const CONTENT = loadContent();
+// Load content async
+let CONTENT = DEFAULTS;
 
-const MENSAJE = CONTENT.mensaje;
-const PHOTOS = CONTENT.photos;
-const LETTER_POS = { x: 0, z: -70 };
-const BOUNDS = 55;
-const HER_NAME = CONTENT.herName;
-const MY_NAME = CONTENT.myName;
-const LETTER_CONTENT = CONTENT.letter;
-const SPOTIFY_LINKS = CONTENT.music?.links || DEFAULTS.music.links;
+async function initContent() {
+  CONTENT = await loadFromSupabase();
+  initApp();
+}
+
+function initApp() {
+  // Make available globally for other parts of the app
+  window.MENSAJE = CONTENT.mensaje;
+  window.PHOTOS = CONTENT.photos;
+  window.LETTER_POS = { x: 0, z: -70 };
+  window.BOUNDS = 55;
+  window.HER_NAME = CONTENT.herName;
+  window.MY_NAME = CONTENT.myName;
+  window.LETTER_CONTENT = CONTENT.letter;
+  window.SPOTIFY_LINKS = CONTENT.music?.links || DEFAULTS.music.links;
+  
+  // Start the app
+  init3D();
+  animate();
+}
+
+initContent();
 
 // =====================================================================
 // PALETA
