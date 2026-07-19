@@ -60,7 +60,13 @@
   .upload-text{font-family:'Cormorant Garamond',serif;color:var(--vino-dark);font-size:1.1rem}
   .upload-hint{font-size:0.75rem;color:var(--rosa-vieja)}
   .image-upload .image-preview{margin-top:12px;max-height:120px}
-  
+
+  .song-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--rosa-suave);border-radius:6px;margin-bottom:8px;background:#fefdfb}
+  .song-item .song-icon{font-size:1.2rem}
+  .song-item .song-name{flex:1;font-family:'Cormorant Garamond',serif;font-size:1rem;color:var(--vino-dark);word-break:break-word}
+  .song-item .song-size{font-size:0.75rem;color:var(--rosa-vieja);white-space:nowrap}
+  .song-item .remove-line{flex-shrink:0}
+
   /* QR Code section */
   .qr-section{text-align:center;padding:20px;background:linear-gradient(135deg,var(--vino),var(--vino-dark));border-radius:12px;color:var(--cream);margin-top:20px}
   .qr-section h3{font-family:'Parisienne',cursive;font-size:1.8rem;margin-bottom:10px;color:var(--gold)}
@@ -120,19 +126,20 @@
     </div>
   </div>
 
-  <!-- Música -->
+  <!-- Música: varias canciones + mini reproductor en el jardín -->
   <div class="card">
-    <h2>🎵 Vuestra canción</h2>
-    <p style="font-size:0.85rem; color:var(--rosa-vieja); margin-bottom:12px; font-style:italic;">Sube el archivo de la canción (MP3). Sonará de verdad dentro del jardín al tocar 🎵 — los enlaces de Spotify de abajo NO suenan aquí, solo abren la app por fuera.</p>
+    <h2>🎵 Vuestras canciones</h2>
+    <p style="font-size:0.85rem; color:var(--rosa-vieja); margin-bottom:12px; font-style:italic;">Sube una o varias canciones (MP3). Sonarán de verdad dentro del jardín con un mini reproductor (anterior/pausa/siguiente) — los enlaces de Spotify de abajo NO suenan aquí, solo abren la app por fuera.</p>
     <div class="image-upload" id="audioUpload" onclick="document.getElementById('audioFile').click()" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropAudio(event)">
-      <input type="file" id="audioFile" accept="audio/*" onchange="audioFileSelected(event)" style="display:none">
-      <div class="upload-content" id="audioUploadContent">
+      <input type="file" id="audioFile" accept="audio/*" multiple onchange="audioFileSelected(event)" style="display:none">
+      <div class="upload-content">
         <span class="upload-icon">🎵</span>
-        <span class="upload-text" id="audioUploadText">Toca aquí o arrastra el MP3</span>
-        <span class="upload-hint">Recomendado: menos de 6MB (recorta la canción o usa 128kbps)</span>
+        <span class="upload-text">Toca aquí o arrastra una o varias canciones</span>
+        <span class="upload-hint">MP3/M4A/WAV, hasta 30MB cada una</span>
       </div>
     </div>
-    <div class="url-hint">O pega una URL directa al audio: <input type="text" id="audioUrlInput" placeholder="https://.../cancion.mp3" onchange="updateAudioUrl(this.value)" style="width:100%;margin-top:8px;padding:8px;border:1px solid var(--rosa-suave);border-radius:4px;"></div>
+    <div id="songsList" style="margin-top:12px;"></div>
+    <div class="url-hint">O añade una URL directa a un audio: <input type="text" id="audioUrlInput" placeholder="https://.../cancion.mp3"> <button type="button" class="add-line" style="margin-top:8px;" onclick="addSongByUrl()">+ Añadir por URL</button></div>
   </div>
 
   <!-- Spotify (opcional, no suena dentro del jardín) -->
@@ -206,6 +213,7 @@ const DEFAULTS = {
     signature: "Con todo mi amor"
   },
   music: {
+    songs: [],
     links: [
       { name: "Nuestra canción", url: "https://open.spotify.com/track/TU_TRACK_ID_1" },
       { name: "Esa que nos gusta", url: "https://open.spotify.com/track/TU_TRACK_ID_2" },
@@ -214,6 +222,16 @@ const DEFAULTS = {
     ]
   }
 };
+
+// Convierte el formato viejo (una sola canción en audioData/audioUrl) al nuevo
+// array `songs`, para no perder nada si ya habías subido una canción antes.
+function migrateMusic(music){
+  if(!music) return { songs: [], links: [] };
+  if(!music.songs) music.songs = [];
+  if(music.audioData){ music.songs.push({ name: 'Canción', src: music.audioData }); delete music.audioData; }
+  if(music.audioUrl){ music.songs.push({ name: 'Canción', src: music.audioUrl }); delete music.audioUrl; }
+  return music;
+}
 
 // ============================================================
 // SUPABASE HELPERS
@@ -231,7 +249,7 @@ async function loadFromSupabase() {
       return { ...DEFAULTS, ...data.content,
         photos: data.content.photos?.map((p, i) => ({ ...DEFAULTS.photos[i], ...p })) || DEFAULTS.photos,
         letter: { ...DEFAULTS.letter, ...(data.content.letter || {}) },
-        music: { ...DEFAULTS.music, ...(data.content.music || {}) }
+        music: migrateMusic({ ...DEFAULTS.music, ...(data.content.music || {}) })
       };
     }
   } catch (e) {
@@ -297,7 +315,7 @@ function renderUI(){
   document.getElementById('letterSignature').value = currentData.letter?.signature || DEFAULTS.letter.signature;
 
   // Música
-  renderAudioUpload();
+  renderSongsList();
   renderMusic(currentData.music?.links || DEFAULTS.music.links);
 
   // Generar QR
@@ -409,43 +427,65 @@ function processImage(file, idx){
 }
 
 // ============================================================
-// AUDIO UPLOAD (canción real que suena dentro del jardín)
+// LISTA DE CANCIONES (varias, suenan de verdad dentro del jardín
+// con mini reproductor: anterior / pausa / siguiente)
 // ============================================================
 function dropAudio(e){
   e.preventDefault();
   e.currentTarget.classList.remove('drag-over');
-  const file = e.dataTransfer.files[0];
-  if(file) processAudio(file);
+  [...e.dataTransfer.files].forEach(f => processAudio(f));
 }
 function audioFileSelected(e){
-  const file = e.target.files[0];
-  if(file) processAudio(file);
+  [...e.target.files].forEach(f => processAudio(f));
+  e.target.value = ''; // permite volver a elegir el mismo archivo más tarde
 }
 function processAudio(file){
-  if(!file.type.startsWith('audio/')) return showMsg('Solo archivos de audio', 'error');
-  if(file.size > 9*1024*1024) return showMsg('Máx ~9MB: recorta la canción o usa un MP3 más comprimido (128kbps)', 'error');
-  showMsg('⏳ Subiendo canción…');
+  // Algunos navegadores no rellenan file.type para audio -> también validamos por extensión
+  const isAudioExt = /\.(mp3|m4a|wav|ogg|aac|flac|opus)$/i.test(file.name);
+  if(!file.type.startsWith('audio/') && !isAudioExt) return showMsg(`"${file.name}" no parece un audio válido`, 'error');
+  const mb = (file.size / (1024*1024)).toFixed(1);
+  if(file.size > 30*1024*1024) return showMsg(`"${file.name}" pesa ${mb}MB (máx 30MB). Recórtala o expórtala en MP3 128kbps.`, 'error');
+  showMsg(`⏳ Subiendo "${file.name}"… (${mb}MB, puede tardar unos segundos)`);
   const reader = new FileReader();
   reader.onload = e => {
     currentData.music = currentData.music || {};
-    currentData.music.audioData = e.target.result;
-    currentData.music.audioUrl = ''; // el archivo subido manda sobre la URL
+    currentData.music.songs = currentData.music.songs || [];
+    currentData.music.songs.push({ name: file.name.replace(/\.[^.]+$/, ''), src: e.target.result });
     renderUI();
-    showMsg(`✅ Canción "${file.name}" lista para guardar`);
+    showMsg(`✅ "${file.name}" añadida a la lista`);
   };
-  reader.onerror = () => showMsg('❌ No se pudo leer el archivo', 'error');
+  reader.onerror = () => showMsg(`❌ No se pudo leer "${file.name}"`, 'error');
   reader.readAsDataURL(file);
 }
-function updateAudioUrl(val){
+function addSongByUrl(){
+  const input = document.getElementById('audioUrlInput');
+  const url = input.value.trim();
+  if(!url) return showMsg('Pega primero una URL', 'error');
   currentData.music = currentData.music || {};
-  currentData.music.audioUrl = val.trim();
-  if(val.trim()) currentData.music.audioData = ''; // la URL manda si se usa este campo
+  currentData.music.songs = currentData.music.songs || [];
+  const name = decodeURIComponent(url.split('/').pop().split('?')[0].replace(/\.[^.]+$/, '')) || 'Canción';
+  currentData.music.songs.push({ name, src: url });
+  input.value = '';
+  renderUI();
+  showMsg(`✅ "${name}" añadida a la lista`);
 }
-function renderAudioUpload(){
-  const content = document.getElementById('audioUploadContent');
-  const hasFile = currentData.music && currentData.music.audioData;
-  content.querySelector('.upload-text').textContent = hasFile ? '🎶 Canción subida — toca para cambiarla' : 'Toca aquí o arrastra el MP3';
-  document.getElementById('audioUrlInput').value = (currentData.music && currentData.music.audioUrl) || '';
+function removeSong(idx){
+  currentData.music.songs.splice(idx, 1);
+  renderUI();
+}
+function renderSongsList(){
+  const container = document.getElementById('songsList');
+  const songs = (currentData.music && currentData.music.songs) || [];
+  container.innerHTML = songs.map((s, i) => {
+    const kb = s.src.startsWith('data:') ? Math.round((s.src.length * 0.75) / 1024) : null;
+    return `
+      <div class="song-item">
+        <span class="song-icon">🎶</span>
+        <span class="song-name">${escapeHtml(s.name || 'Canción ' + (i+1))}</span>
+        <span class="song-size">${kb ? kb + ' KB' : 'URL externa'}</span>
+        <button class="remove-line" onclick="removeSong(${i})">✕</button>
+      </div>`;
+  }).join('') || '<p style="font-size:0.85rem;color:var(--rosa-vieja);font-style:italic;">Aún no hay canciones subidas.</p>';
 }
 
 // Redimensiona a maxSize (lado mayor) y comprime a JPEG.
@@ -531,8 +571,8 @@ function renderSpotifyLinks() {
 }
 
 async function saveAll(){
-  // Collect Spotify links SIN perder la canción real ya subida (audioData/audioUrl)
-  currentData.music = { audioData: currentData.music?.audioData || '', audioUrl: currentData.music?.audioUrl || '', links: [] };
+  // Collect Spotify links SIN perder la lista de canciones ya subidas
+  currentData.music = { songs: currentData.music?.songs || [], links: [] };
   document.querySelectorAll('#spotifyLinks .message-line').forEach(line => {
     const inputs = line.querySelectorAll('input');
     if (inputs.length >= 2) {
@@ -566,7 +606,7 @@ async function loadDefaults(){
 
 async function clearAll(){
   if(confirm('¿Borrar TODO el contenido? Esta acción no se puede deshacer.')){
-    currentData = { ...DEFAULTS, photos: DEFAULTS.photos.map(p=>({...p, image:""})), music: {links:[]} };
+    currentData = { ...DEFAULTS, photos: DEFAULTS.photos.map(p=>({...p, image:""})), music: {songs:[], links:[]} };
     await saveToSupabase(currentData);
     renderUI();
     showMsg('Contenido limpiado', 'error');

@@ -29,6 +29,7 @@ const DEFAULTS = {
     signature: "Con todo mi amor"
   },
   music: {
+    songs: [],
     links: [
       { name: "Nuestra canción", url: "https://open.spotify.com/track/TU_TRACK_ID_1" },
       { name: "Esa que nos gusta", url: "https://open.spotify.com/track/TU_TRACK_ID_2" },
@@ -37,6 +38,15 @@ const DEFAULTS = {
     ]
   }
 };
+
+// Convierte el formato viejo (una sola canción en audioData/audioUrl) al nuevo array `songs`
+function migrateMusic(music){
+  if(!music) return { songs: [], links: [] };
+  if(!music.songs) music.songs = [];
+  if(music.audioData){ music.songs.push({ name: 'Canción', src: music.audioData }); delete music.audioData; }
+  if(music.audioUrl){ music.songs.push({ name: 'Canción', src: music.audioUrl }); delete music.audioUrl; }
+  return music;
+}
 
 async function loadFromSupabase() {
   try {
@@ -53,7 +63,7 @@ async function loadFromSupabase() {
       return { ...DEFAULTS, ...data.content,
         photos: data.content.photos?.map((p, i) => ({ ...DEFAULTS.photos[i], ...p })) || DEFAULTS.photos,
         letter: { ...DEFAULTS.letter, ...(data.content.letter || {}) },
-        music: { ...DEFAULTS.music, ...(data.content.music || {}) }
+        music: migrateMusic({ ...DEFAULTS.music, ...(data.content.music || {}) })
       };
     }
   } catch (e) {
@@ -63,10 +73,10 @@ async function loadFromSupabase() {
       const stored = localStorage.getItem('jardin_content');
       if (stored) {
         const parsed = JSON.parse(stored);
-        return { ...DEFAULTS, ...parsed, 
+        return { ...DEFAULTS, ...parsed,
           photos: parsed.photos?.map((p, i) => ({ ...DEFAULTS.photos[i], ...p })) || DEFAULTS.photos,
           letter: { ...DEFAULTS.letter, ...(parsed.letter || {}) },
-          music: { ...DEFAULTS.music, ...(parsed.music || {}) }
+          music: migrateMusic({ ...DEFAULTS.music, ...(parsed.music || {}) })
         };
       }
     } catch (e2) {
@@ -94,15 +104,11 @@ function initApp() {
   window.MY_NAME = CONTENT.myName;
   window.LETTER_CONTENT = CONTENT.letter;
   window.SPOTIFY_LINKS = CONTENT.music?.links || DEFAULTS.music.links;
-  // Canción real subida/enlazada en el admin (prioridad: archivo subido > URL directa).
-  // Se asigna aquí (no al cargar el script) porque CONTENT llega async desde Supabase;
-  // hacerlo antes siempre daba MUSIC_AUDIO_SRC vacío.
-  window.MUSIC_AUDIO_SRC = CONTENT.music?.audioData || CONTENT.music?.audioUrl || '';
-  if(MUSIC_AUDIO_SRC){
-    const bgAudioEl = document.getElementById('bgAudio');
-    bgAudioEl.src = MUSIC_AUDIO_SRC;
-    bgAudioEl.volume = 0.55;
-  }
+  // Lista de canciones reales subidas/enlazadas en el admin. Se asigna aquí (no al
+  // cargar el script) porque CONTENT llega async desde Supabase; hacerlo antes
+  // siempre daba una lista vacía.
+  window.MUSIC_SONGS = (CONTENT.music?.songs || []).filter(s => s.src && s.src.trim());
+  initPlayer();
 
   // Apply text/content to DOM now that data has loaded
   applyDynamicContent();
@@ -1010,7 +1016,7 @@ const gameContainer = document.getElementById('gameContainer');
 gameContainer.addEventListener('pointerdown', (e)=>{
   if(lookPointerId !== null) return;
   // Ignorar si está sobre joystick o botones UI
-  const target = e.target.closest('#joyBase, #menuBtn, #musicBtn, #prompt');
+  const target = e.target.closest('#joyBase, #menuBtn, #musicBtn, #prompt, #playerBar');
   if(target) return;
   
   lookPointerId = e.pointerId;
@@ -1062,8 +1068,8 @@ function typeMessage(){
 document.getElementById('enterBtn').addEventListener('click', ()=>{
   document.getElementById('intro').classList.add('hide');
   document.getElementById('hud').classList.add('show');
-  // Al entrar (gesto real del usuario) arrancamos la música si hay una canción subida
-  if(hasRealSong()){
+  // Al entrar (gesto real del usuario) arrancamos la música si hay canciones subidas
+  if(hasSongs()){
     startMusic();
     musicBtn.classList.add('playing');
     musicBtn.textContent = '🔊';
@@ -1072,20 +1078,47 @@ document.getElementById('enterBtn').addEventListener('click', ()=>{
 });
 
 // =====================================================================
-// MÚSICA: canción real subida en el admin (fiable) con fallback a un
-// tono ambiental generado si aún no se subió ninguna canción.
-// Los enlaces de Spotify NUNCA sonaban aquí dentro (solo abren la app
-// de Spotify por fuera) — por eso "no se escuchaba". Se dejan como
-// extra opcional en la pulsación larga.
+// MÚSICA: lista de canciones reales subidas en el admin (fiable), con
+// mini reproductor (anterior / pausa / siguiente) y avance automático
+// al terminar cada canción. Fallback a un tono ambiental si no hay
+// ninguna canción subida. Los enlaces de Spotify NUNCA sonaban aquí
+// dentro (solo abren la app por fuera) — se dejan como extra opcional
+// en la pulsación larga del botón 🎵.
 // =====================================================================
 let audioCtx = null;
 let ambientAudio = null;
 let isPlaying = false;
+let currentSongIdx = 0;
 const bgAudio = document.getElementById('bgAudio');
-// bgAudio.src ya se asigna en initApp() una vez llega MUSIC_AUDIO_SRC de Supabase
-function hasRealSong(){ return !!(MUSIC_AUDIO_SRC && MUSIC_AUDIO_SRC.trim()); }
-function startMusic(){ hasRealSong() ? bgAudio.play().catch(()=>{}) : startAmbient(); }
-function stopMusic(){ hasRealSong() ? bgAudio.pause() : stopAmbient(); }
+const playerBar = document.getElementById('playerBar');
+const playerTitle = document.getElementById('playerTitle');
+
+function hasSongs(){ return MUSIC_SONGS && MUSIC_SONGS.length > 0; }
+
+function initPlayer(){
+  bgAudio.loop = false; // con playlist, al terminar avanzamos nosotros, no repetimos la misma
+  bgAudio.addEventListener('ended', () => { if(hasSongs()) nextSong(true); });
+  if(hasSongs()){
+    playerBar.classList.add('show');
+    loadSong(0, /*autoplay*/ false);
+  }
+}
+
+function loadSong(idx, autoplay){
+  if(!hasSongs()) return;
+  currentSongIdx = ((idx % MUSIC_SONGS.length) + MUSIC_SONGS.length) % MUSIC_SONGS.length;
+  const song = MUSIC_SONGS[currentSongIdx];
+  bgAudio.src = song.src;
+  bgAudio.volume = 0.55;
+  playerTitle.textContent = song.name || `Canción ${currentSongIdx+1}`;
+  if(autoplay) bgAudio.play().catch(()=>{});
+}
+
+function nextSong(autoplay){ loadSong(currentSongIdx+1, autoplay !== false && isPlaying); }
+function prevSong(){ loadSong(currentSongIdx-1, isPlaying); }
+
+function startMusic(){ hasSongs() ? bgAudio.play().catch(()=>{}) : startAmbient(); }
+function stopMusic(){ hasSongs() ? bgAudio.pause() : stopAmbient(); }
 
 function createAmbientAudio(){
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -1154,7 +1187,7 @@ if(musicBtn){
       musicBtn.classList.add('playing');
       musicBtn.textContent = '🔊';
       isPlaying = true;
-      showToast(hasRealSong() ? '🎵 Reproduciendo vuestra canción' : '🎵 Música ambiental activada');
+      showToast(hasSongs() ? '🎵 Reproduciendo vuestra música' : '🎵 Música ambiental activada');
     }else{
       stopMusic();
       musicBtn.classList.remove('playing');
@@ -1175,6 +1208,12 @@ if(musicBtn){
   musicBtn.addEventListener('pointerup', () => clearTimeout(pressTimer));
   musicBtn.addEventListener('pointerleave', () => clearTimeout(pressTimer));
 }
+
+// Mini reproductor: anterior / siguiente
+const prevSongBtn = document.getElementById('prevSongBtn');
+const nextSongBtn = document.getElementById('nextSongBtn');
+if(prevSongBtn) prevSongBtn.addEventListener('click', (e) => { e.stopPropagation(); prevSong(); });
+if(nextSongBtn) nextSongBtn.addEventListener('click', (e) => { e.stopPropagation(); nextSong(); });
 
 // Auto-resume audio context on first user interaction
 document.body.addEventListener('click', () => {

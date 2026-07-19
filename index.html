@@ -60,6 +60,22 @@ window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON
   }
   #musicBtn.playing{ background:var(--gold); color:var(--vino-dark); border-color:var(--gold); animation:pulse 2s infinite; }
   @keyframes pulse{ 0%,100%{ transform:scale(1); } 50%{ transform:scale(1.05); } }
+
+  /* ---------- mini reproductor (varias canciones) ---------- */
+  #playerBar{
+    position:fixed; top:calc(5.5vh + 58px); left:50%; transform:translateX(-50%) translateY(-8px);
+    display:flex; align-items:center; gap:10px; padding:7px 14px; border-radius:20px;
+    background:rgba(58,18,32,0.6); border:1px solid rgba(237,227,211,0.35); backdrop-filter:blur(4px);
+    pointer-events:none; opacity:0; transition:opacity .4s ease, transform .4s ease; max-width:min(60vw,240px);
+  }
+  #playerBar.show{ opacity:1; transform:translateX(-50%) translateY(0); pointer-events:auto; }
+  #playerBar button{
+    background:none; border:none; color:var(--cream); font-size:15px; cursor:pointer; padding:2px 4px; flex-shrink:0;
+  }
+  #playerTitle{
+    font-family:'Cormorant Garamond', serif; font-style:italic; font-size:0.85rem; color:var(--rosa-suave);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:170px;
+  }
   #prompt{
     position:fixed; bottom:calc(5.5vh + 34px); left:0; right:0; text-align:center; pointer-events:none;
     font-family:'Cormorant Garamond', serif; font-style:italic; font-size:1rem; color:var(--cream);
@@ -204,6 +220,11 @@ window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON
     <div id="counter">✦ Recuerdos encontrados: <span id="countNum">0</span>/<span id="countTotal">8</span></div>
     <button id="menuBtn">☰</button>
     <button id="musicBtn" title="Música">🎵</button>
+    <div id="playerBar">
+      <button id="prevSongBtn" title="Anterior">⏮</button>
+      <span id="playerTitle">—</span>
+      <button id="nextSongBtn" title="Siguiente">⏭</button>
+    </div>
     <div id="prompt"><span id="promptText">Toca para ver</span></div>
     <div id="joyBase"><div id="joyStick"></div></div>
     <div id="lookHint">Arrastra la pantalla<br>para mirar alrededor</div>
