@@ -75,8 +75,15 @@ window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON
   #joyBase{
     position:fixed; bottom:calc(5.5vh + 26px); left:26px; width:104px; height:104px; border-radius:50%;
     background:rgba(237,227,211,0.10); border:1px solid rgba(237,227,211,0.4); pointer-events:auto;
-    backdrop-filter:blur(2px);
+    backdrop-filter:blur(2px); opacity:0.4;
+    transition:opacity .6s ease;
   }
+  #intro.hide ~ #hud #joyBase{ opacity:1; }
+  @keyframes joystickPulse{
+    0%, 100%{ background:rgba(237,227,211,0.10); border-color:rgba(237,227,211,0.4); }
+    50%{ background:rgba(201,157,163,0.25); border-color:rgba(201,157,163,0.6); }
+  }
+  #intro:not(.hide) #joyBase{ animation:joystickPulse 2.5s ease-in-out infinite; opacity:0.7; }
   #joyStick{
     position:absolute; top:50%; left:50%; width:46px; height:46px; border-radius:50%;
     background:rgba(201,157,163,0.75); border:1px solid rgba(237,227,211,0.7);
@@ -110,6 +117,11 @@ window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON
   }
   #enterBtn.show{ opacity:1; }
   #loadingNote{ margin-top:16px; font-size:11px; letter-spacing:.1em; color:rgba(237,227,211,0.6); }
+  #controlHint{
+    margin-top:18px; font-family:'Jost', sans-serif; font-size:10px; letter-spacing:.08em;
+    color:rgba(237,227,211,0.7); text-transform:uppercase; animation:fadeInHint 1.2s ease-out 3.5s both;
+  }
+  @keyframes fadeInHint{ from{ opacity:0; } to{ opacity:1; } }
 
   /* ---------- MENU (teleport) ---------- */
   #menuPanel{
@@ -139,7 +151,14 @@ window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON
     background:rgba(20,6,11,0.72); backdrop-filter:blur(8px);
     opacity:0; pointer-events:none; transition:opacity .6s ease;
   }
-  .overlay.show{ opacity:1; pointer-events:auto; }
+  .overlay.show{
+    opacity:1; pointer-events:auto;
+    animation: overlayPop .5s cubic-bezier(.68,.55,.265,1.55) forwards;
+  }
+  @keyframes overlayPop{
+    0%{ transform:scale(0.92); opacity:0; }
+    100%{ transform:scale(1); opacity:1; }
+  }
   .closeX{
     position:absolute; top:calc(5.5vh + 18px); right:22px; width:34px; height:34px; border-radius:50%;
     background:rgba(58,18,32,0.5); border:1px solid rgba(237,227,211,0.4); color:var(--cream);
@@ -182,7 +201,7 @@ window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON
   <div class="letterbox" id="letterboxBottom"></div>
 
   <div id="hud">
-    <div id="counter">✦ Recuerdos encontrados: <span id="countNum">0</span>/8</div>
+    <div id="counter">✦ Recuerdos encontrados: <span id="countNum">0</span>/<span id="countTotal">8</span></div>
     <button id="menuBtn">☰</button>
     <button id="musicBtn" title="Música">🎵</button>
     <div id="prompt"><span id="promptText">Toca para ver</span></div>
@@ -197,6 +216,7 @@ window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON
     <h1 id="introTitle">Feliz Cumpleaños, Elize</h1>
     <div class="msg-box" id="typedMsg"></div>
     <div id="loadingNote">preparando el jardín…</div>
+    <div id="controlHint">📍 Usa el joystick para caminar • Arrastra para mirar</div>
     <button id="enterBtn">Entrar al jardín</button>
   </div>
 
@@ -241,6 +261,6 @@ window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON
   <div id="toast"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="app.js"></script>
+<script src="app.js?v=20260719"></script>
 </body>
 </html>

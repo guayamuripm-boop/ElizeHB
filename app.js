@@ -94,7 +94,14 @@ function initApp() {
   window.MY_NAME = CONTENT.myName;
   window.LETTER_CONTENT = CONTENT.letter;
   window.SPOTIFY_LINKS = CONTENT.music?.links || DEFAULTS.music.links;
-  
+
+  // Apply text/content to DOM now that data has loaded
+  applyDynamicContent();
+
+  // Build UI that depends on loaded content (menu + intro typewriter)
+  buildTeleportMenu();
+  typeMessage();
+
   // Start the app
   init3D();
   animate();
@@ -130,6 +137,7 @@ let moveVec = { x:0, y:0 };
 let walking = false, walkTime = 0;
 let nearestPOI = null;
 let visited = new Set();
+let frameCount = 0, lastFpsCheck = 0, avgFps = 60, performanceOptimized = false;
 
 // DOM elements (needed before animate starts)
 const promptEl = document.getElementById('prompt');
@@ -150,12 +158,11 @@ function applyDynamicContent() {
 
   const letterSignature = document.getElementById('letterSignature');
   if (letterSignature) letterSignature.textContent = LETTER_CONTENT.signature || `Con todo mi amor, ${MY_NAME}`;
+
+  // Counter total = número real de fotos (dinámico, nunca desincronizado)
+  const countTotal = document.getElementById('countTotal');
+  if (countTotal) countTotal.textContent = PHOTOS.length;
 }
-
-applyDynamicContent();
-
-init3D();
-animate();
 
 function init3D(){
   scene = new THREE.Scene();
@@ -278,10 +285,12 @@ function initFlowers(){
   const roseColors = [COLORS.roseRed, COLORS.rosePink, COLORS.roseWhite, COLORS.rosePeach];
   const gerberaColors = [COLORS.gerberaRed, COLORS.gerberaOrange, COLORS.gerberaPink, COLORS.gerberaYellow];
   
-  // Área: empieza YA desde el inicio, muy densa
-  const areaWidth = 55;
+  // Área: densa desde el inicio pero optimizada para móvil.
+  // (Antes: width 55 / spacing 1.15 = ~3170 flores → decenas de miles de mallas,
+  //  inviable en móviles. Ahora ~1500 flores manteniendo el look de campo denso.)
+  const areaWidth = 46;
   const areaDepth = 80;
-  const spacing = 1.15; // Muy denso
+  const spacing = 1.5;
   
   for(let z = 0; z > -areaDepth; z -= spacing){
     for(let x = -areaWidth/2; x < areaWidth/2; x += spacing){
@@ -483,7 +492,7 @@ function createGerberaPetalGeometry(){
 }
 
 function createDust(){
-  const count = 150;
+  const count = performanceOptimized ? 60 : 150;
   const positions = new Float32Array(count*3);
   const colors = new Float32Array(count*3);
   const palette = [COLORS.tulipPink, COLORS.tulipYellow, COLORS.gerberaOrange, COLORS.cream];
@@ -583,14 +592,17 @@ function createPhotoFrame(p, idx){
     const canvas = document.createElement('canvas');
     canvas.width = 512; canvas.height = 640;
     const ctx = canvas.getContext('2d');
+    // Fondo suave sin rayas
     ctx.fillStyle = '#F7F0E6'; ctx.fillRect(0,0,512,640);
-    ctx.fillStyle = '#DCC9B6'; ctx.fillRect(28,28,456,470);
-    ctx.strokeStyle = 'rgba(210,189,166,0.6)'; ctx.lineWidth = 14;
-    for(let i=-500;i<512;i+=40){ ctx.beginPath(); ctx.moveTo(i,28); ctx.lineTo(i+470,498); ctx.stroke(); }
-    ctx.fillStyle = '#5C1A2B'; ctx.font = 'italic 30px Georgia'; ctx.textAlign = 'center';
-    ctx.fillText(p.label, 256, 270);
-    ctx.fillStyle = '#3A1220'; ctx.font = '32px Georgia';
-    ctx.fillText(p.caption, 256, 580);
+    // Degradado suave
+    const grad = ctx.createLinearGradient(0,0,512,640);
+    grad.addColorStop(0, 'rgba(237,227,211,0.3)');
+    grad.addColorStop(0.5, 'rgba(201,157,163,0.15)');
+    grad.addColorStop(1, 'rgba(237,227,211,0.3)');
+    ctx.fillStyle = grad; ctx.fillRect(0,0,512,640);
+    // Texto elegante
+    ctx.fillStyle = '#5C1A2B'; ctx.font = 'italic 24px Georgia'; ctx.textAlign = 'center';
+    ctx.fillText('Cargando recuerdo…', 256, 320);
     return new THREE.CanvasTexture(canvas);
   }
 
@@ -682,12 +694,36 @@ function animate(){
   const dt = Math.min(clock.getDelta(), 0.05);
   walkTime += dt;
 
+  // FPS monitoring para optimización automática
+  frameCount++;
+  if(walkTime - lastFpsCheck > 1.0){
+    avgFps = frameCount;
+    frameCount = 0;
+    lastFpsCheck = walkTime;
+    if(avgFps < 25 && !performanceOptimized){
+      optimizeForLowPerformance();
+    }
+  }
+
   updateMovement(dt);
   updateFlowers();
   updateStars(dt);
   updatePOIs(dt);
 
   renderer.render(scene, camera);
+}
+
+function optimizeForLowPerformance(){
+  performanceOptimized = true;
+  if(dustPoints){
+    scene.remove(dustPoints);
+    dustPoints = createDust(); // Reduce count internally
+    scene.add(dustPoints);
+  }
+  // Oculta la mitad de las flores para aliviar dispositivos lentos (sigue viéndose denso)
+  flowerObjs.forEach((f, i) => { if(i % 2 === 0) f.visible = false; });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+  console.warn('⚠️ Optimizando performance para dispositivo lento');
 }
 
 function updateMovement(dt){
@@ -776,15 +812,35 @@ function hidePrompt(){ promptEl.classList.remove('show'); }
 
 function interactNearest(){
   if(!nearestPOI) return;
+  playClickSound();
   if(nearestPOI.type === 'photo'){
     openPhoto(nearestPOI.data, nearestPOI.idx);
   } else if(nearestPOI.type === 'letter'){
     if(visited.size === PHOTOS.length){
       openLetter();
     } else {
-      showToast(`Aún faltan recuerdos por descubrir ✦ ${visited.size}/${PHOTOS.length}`);
+      const remaining = PHOTOS.length - visited.size;
+      showToast(`📍 Busca ${remaining} más recuerdo${remaining > 1 ? 's' : ''} en el camino`);
     }
   }
+}
+
+function playClickSound(){
+  try {
+    if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, now);
+    osc.frequency.exponentialRampToValueAtTime(440, now + 0.1);
+    gain.gain.setValueAtTime(0.15, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.1);
+  } catch(e) {}
 }
 
 function openPhoto(p, idx){
@@ -824,24 +880,27 @@ document.getElementById('closeLetter').addEventListener('click', ()=>{
   document.getElementById('letterOverlay').classList.remove('show');
 });
 
-// Menú (teletransporte)
+// Menú (teletransporte) — se rellena tras cargar el contenido (PHOTOS async)
 const menuList = document.getElementById('menuList');
-const menuItems = [
-  { label:'Mensaje inicial', go:()=>{ camera.position.set(0,1.6,6); yaw=0; pitch=0; } },
-  ...PHOTOS.map((p,i)=>({ label:p.label, go:()=>{ camera.position.set(p.x, 1.6, p.z+3); yaw=0; pitch=0; } })),
-  { label:'Carta final', go:()=>{ camera.position.set(LETTER_POS.x, 1.6, LETTER_POS.z+4); yaw=0; pitch=0; } },
-];
-menuItems.forEach(item => {
-  const row = document.createElement('div');
-  row.className = 'menuItem';
-  row.innerHTML = `<span>${item.label}</span>`;
-  const btn = document.createElement('button');
-  btn.textContent = 'Ir';
-  btn.addEventListener('click', ()=>{ item.go(); closeMenu(); });
-  row.appendChild(btn);
-  menuList.appendChild(row);
-});
 const menuPanel = document.getElementById('menuPanel');
+function buildTeleportMenu(){
+  menuList.innerHTML = '';
+  const menuItems = [
+    { label:'Mensaje inicial', go:()=>{ camera.position.set(0,1.6,6); yaw=0; pitch=0; } },
+    ...PHOTOS.map((p,i)=>({ label:p.label, go:()=>{ camera.position.set(p.x, 1.6, p.z+3); yaw=0; pitch=0; } })),
+    { label:'Carta final', go:()=>{ camera.position.set(LETTER_POS.x, 1.6, LETTER_POS.z+4); yaw=0; pitch=0; } },
+  ];
+  menuItems.forEach(item => {
+    const row = document.createElement('div');
+    row.className = 'menuItem';
+    row.innerHTML = `<span>${item.label}</span>`;
+    const btn = document.createElement('button');
+    btn.textContent = 'Ir';
+    btn.addEventListener('click', ()=>{ item.go(); closeMenu(); });
+    row.appendChild(btn);
+    menuList.appendChild(row);
+  });
+}
 document.getElementById('menuBtn').addEventListener('click', ()=> menuPanel.classList.add('open'));
 document.getElementById('closeMenu').addEventListener('click', closeMenu);
 function closeMenu(){ menuPanel.classList.remove('open'); }
@@ -938,7 +997,6 @@ function typeMessage(){
   }
   typeLine();
 }
-typeMessage();
 
 document.getElementById('enterBtn').addEventListener('click', ()=>{
   document.getElementById('intro').classList.add('hide');
